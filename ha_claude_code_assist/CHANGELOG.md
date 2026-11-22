@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0
+
 ### Added
 
 - The HA Claude Code Assist panel with Chat, Memory, Tools, Sessions and Settings. Answers are
