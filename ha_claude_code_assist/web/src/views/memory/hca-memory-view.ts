@@ -115,7 +115,7 @@ export class HcaMemoryView extends LitElement {
       `;
     }
     return html`
-      <hca-list-row heading=${entry.text}
+      <hca-list-row wrap heading=${entry.text}
         detail=${`Saved by ${entry.created_by === "claude" ? "the assistant" : "you"} on ${formatDate(entry.created_at)}`}>
         <hca-button slot="end" size="sm" variant="ghost" icon="edit" @click=${() => (this.editing = entry.id)}>Edit</hca-button>
         <hca-button slot="end" size="sm" variant="ghost" icon="trash" @click=${() => this.removeEntry(entry)}>Remove</hca-button>
