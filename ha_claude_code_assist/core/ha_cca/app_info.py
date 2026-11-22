@@ -66,16 +66,16 @@ def render_status(ctx: AppInfoContext) -> str:
         f"- Read files: {_on_off(s.read_files)}",
         f"- MCP servers: {', '.join(sorted(s.mcp_servers)) or 'none'}",
         f"- Session timeout: {int(s.session_timeout.total_seconds() // 60)} minutes",
-        f"- Long-term memory: {_on_off(s.memory_enabled)}, {ctx.memory_used} of {s.memory_max_entries} "
-        f"entries used, up to {s.memory_max_entry_length} characters each",
+        (f"- Long-term memory: {_on_off(s.memory_enabled)}, {ctx.memory_used} of {s.memory_max_entries} "
+         f"entries used, up to {s.memory_max_entry_length} characters each"),
     ]
     if ctx.session:
         settings, claude = ctx.session.settings, ctx.session.claude
         lines += [
             "",
             "This session:",
-            f"- Model {settings.model}, effort {settings.effort}, web search {_on_off(settings.web_search)}, "
-            f"read files {_on_off(settings.read_files)}, long-term memory {_on_off(settings.memory_enabled)}",
+            (f"- Model {settings.model}, effort {settings.effort}, web search {_on_off(settings.web_search)}, "
+             f"read files {_on_off(settings.read_files)}, long-term memory {_on_off(settings.memory_enabled)}"),
             f"- Tools: {_tools_summary(ctx.session_tools)}",
         ]
         if claude.context_tokens:

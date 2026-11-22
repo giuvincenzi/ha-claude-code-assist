@@ -12,7 +12,7 @@ TOKEN = "Bearer right"
 class FakeMcpServer(BaseHTTPRequestHandler):
     """Answers like an MCP server over HTTP: JSON for initialize, SSE for tools/list."""
 
-    def do_POST(self):  # noqa: N802 (http.server API)
+    def do_POST(self):  # the name http.server calls for a POST
         message = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if self.headers.get("Authorization") != TOKEN:
             self.send_response(401)

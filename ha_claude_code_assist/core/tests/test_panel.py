@@ -68,7 +68,7 @@ def make_panel(applied, sessions=None, transcripts=None):
     def on_settings_changed(changes):
         applied.append(changes)
     return Panel(sessions or FakeSessions(), FakeMemory(), FakeSettings(), transcripts=transcripts,
-                 on_settings_changed=on_settings_changed, status=lambda: {})
+                 on_settings_changed=on_settings_changed, status=dict)
 
 
 async def ask(panel, request):

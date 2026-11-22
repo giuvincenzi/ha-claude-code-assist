@@ -66,9 +66,10 @@ app-behave: ## Behaviour report: real conversations with the assistant (scripts/
 # --- Tests and dependencies -------------------------------------------------
 
 .PHONY: test
-test: ## Run the core's automated tests (in the app image)
+test: ## Run the core's automated tests (in the app image) and the release script's
 	$(COMPOSE) build test
 	$(RUN) test
+	$(RUN) -v $(ROOT):/repo:ro -w /repo node node --test "scripts/*.test.mjs"
 
 .PHONY: test-integration
 test-integration: ## Run the tests of the Home Assistant integration (custom_components/)
@@ -76,7 +77,9 @@ test-integration: ## Run the tests of the Home Assistant integration (custom_com
 	$(RUN) test-integration
 
 .PHONY: lint
-lint: ## Check the panel: TypeScript types and ESLint
+lint: ## Check the code: the Python (ruff, ruff.toml), the panel's TypeScript types and ESLint
+	$(COMPOSE) build test
+	$(RUN) -v $(ROOT):/repo:ro -w /repo test /opt/venv/bin/ruff check --no-cache .
 	$(RUN) node sh -c "npm ci --ignore-scripts --no-audit --no-fund && npx tsc && npm run lint"
 
 .PHONY: lock

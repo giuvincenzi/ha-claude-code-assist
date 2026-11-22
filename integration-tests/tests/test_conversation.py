@@ -7,8 +7,8 @@ from homeassistant.components import conversation
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import intent
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import intent
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -44,7 +44,7 @@ def entity_id(hass: HomeAssistant) -> str:
 
 def sent(aioclient_mock: AiohttpClientMocker) -> dict:
     """The body of the last message sent to the app."""
-    method, url, data, headers = [call for call in aioclient_mock.mock_calls if str(call[1]) == ASSIST][-1]
+    _, _, data, headers = [call for call in aioclient_mock.mock_calls if str(call[1]) == ASSIST][-1]
     assert headers["Authorization"] == "Bearer secret"
     return data
 

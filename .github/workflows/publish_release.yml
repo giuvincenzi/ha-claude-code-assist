@@ -1,0 +1,85 @@
+# Publishes a release: the tests, then the GitHub Release with its tag vX.Y.Z and the CHANGELOG section as its notes.
+# The Marketplace and HACS offer the integration's update from that release; the Supervisor offers the app's update
+# from the version in config.yaml on main, which the same merge brought.
+# Starts on every push to main; decide_release goes on only when the version in config.yaml has no tag yet and the
+# CHANGELOG has its section, which only the merge of the release pull request brings (create_release_pr; the test
+# workflow's block_version_change fails any other pull request that changes the version). Deciding from the tag, not
+# from a change of the version, makes a failed release run again with "Re-run failed jobs" and lets the first release
+# keep the version the app already had.
+name: publish_release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish_release
+
+jobs:
+  decide_release:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the release tags
+
+      - name: install_node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.1 # the version of the node service in compose.yaml
+
+      - name: decide_from_tag_and_changelog
+        id: decide
+        run: |
+          version=$(node scripts/release.mjs version)
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Version $version is released already (tag v$version): not a release." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! node scripts/release.mjs notes "$version" > /dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Version $version has no CHANGELOG section yet (the release pull request writes it): not a release." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "release=true"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release $version." >> "$GITHUB_STEP_SUMMARY"
+
+  # A release never ships with failing tests.
+  run_tests:
+    needs: decide_release
+    if: needs.decide_release.outputs.release == 'true'
+    uses: ./.github/workflows/test.yml
+
+  publish_github_release:
+    needs: [decide_release, run_tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub Release and its tag
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.decide_release.outputs.version }}
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+
+      - name: install_node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.1 # the version of the node service in compose.yaml
+
+      - name: create_release
+        run: |
+          node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --title "HA Claude Code Assist $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
+            --target "$GITHUB_SHA"
