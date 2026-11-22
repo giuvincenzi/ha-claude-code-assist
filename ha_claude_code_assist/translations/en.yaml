@@ -38,7 +38,9 @@ configuration:
     name: Session timeout in minutes
     description: >-
       A session ends after this many minutes without messages. The next message starts
-      a new session, which remembers only what is in long-term memory.
+      a new session, which remembers only what is in long-term memory. A longer session
+      remembers more, and every answer reads all of it, which uses a little more of your
+      subscription.
   session_retention_days:
     name: Days to keep sessions
     description: >-

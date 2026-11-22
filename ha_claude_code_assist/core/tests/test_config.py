@@ -8,7 +8,7 @@ def test_defaults():
     assert settings.model == "haiku"
     assert settings.effort == "low"
     assert settings.mcp_servers == {}
-    assert settings.session_timeout.total_seconds() == 300
+    assert settings.session_timeout.total_seconds() == 50 * 60
     assert settings.oauth_token == ""
     assert settings.memory_enabled is True
     assert settings.web_search is False

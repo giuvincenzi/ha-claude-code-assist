@@ -18,8 +18,9 @@ How conversations map to Claude Code sessions and processes (`sessions.py`).
   `--resume`, the transcript's name). Several channel conversation ids can be attached.
 - A message goes to the session of its conversation id; otherwise to the active session of its
   source (channel and source key), attaching the id; otherwise to a new session.
-- A session is active while it had a turn within the conversation timeout. Its default matches
-  Home Assistant's `CONVERSATION_TIMEOUT` (5 minutes), so sessions follow Assist conversations.
+- A session is active while it had a turn within the conversation timeout. Its default (50
+  minutes) keeps a session inside Claude Code's prompt cache, which lasts an hour from its last use
+  (`ephemeral_1h_input_tokens` in the transcripts), with room for a long turn.
 - One turn at a time per session, others wait; different sessions run in parallel.
 - One process per session, started on demand, always in the session's own working directory
   (`/data/sessions/<session_id>/workdir/`): `--resume <claude.session_id>` when its transcript

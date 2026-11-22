@@ -23,7 +23,7 @@ options:
   web_search: false
   read_files: true
   mcp_servers: '{"mcpServers": {}}'
-  session_timeout_minutes: 5
+  session_timeout_minutes: 50
   session_retention_days: 30
   memory_enabled: true
   memory_max_entries: 100
