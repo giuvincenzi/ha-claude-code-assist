@@ -43,6 +43,9 @@ export class HcaSection extends LitElement {
       }
       .content {
         display: grid;
+        /* One column as wide as the section: without it the column grows to its widest content
+           (a line that does not wrap) and the content leaves the section. */
+        grid-template-columns: minmax(0, 1fr);
         gap: var(--hca-space-4);
         padding: var(--hca-space-4) var(--hca-space-5) var(--hca-space-5);
       }

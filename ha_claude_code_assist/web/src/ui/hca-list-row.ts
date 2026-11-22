@@ -9,6 +9,9 @@ import { base } from "./styles";
  * A `selectable` row is one button, end slot included: hover and selection cover the whole row,
  * and it fires `hca-select`. Its end slot must hold nothing interactive (a badge, not a button).
  * A plain row can hold buttons in its end slot.
+ *
+ * The heading fits on one line, cut with an ellipsis; with `wrap` it goes on as many lines as it
+ * needs, for text that must be read whole.
  */
 @customElement("hca-list-row")
 export class HcaListRow extends LitElement {
@@ -60,6 +63,10 @@ export class HcaListRow extends LitElement {
         white-space: nowrap;
         line-height: 1.4;
       }
+      :host([wrap]) .heading {
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
       :host([selected]) .heading {
         color: var(--hca-accent);
         font-weight: 600;
@@ -85,6 +92,7 @@ export class HcaListRow extends LitElement {
   @property() detail = "";
   @property({ type: Boolean, reflect: true }) selectable = false;
   @property({ type: Boolean, reflect: true }) selected = false;
+  @property({ type: Boolean, reflect: true }) wrap = false;
 
   render() {
     const content = html`

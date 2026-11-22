@@ -8,6 +8,11 @@
   conversation goes on after a pause. An app whose settings were already saved keeps its own
   timeout, which you can change in Settings > Sessions.
 
+### Fixed
+
+- Long memory entries go on several lines inside their box, instead of running off it and making
+  the whole page scroll sideways.
+
 ## 0.1.0
 
 ### Added
