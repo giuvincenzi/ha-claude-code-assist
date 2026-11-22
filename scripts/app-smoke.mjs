@@ -230,9 +230,11 @@ try {
     `Assist answered: ${JSON.stringify(spoken.speech)}, streamed in ${streamed.length} parts`);
   const again = await assist(accessToken, "Which word did you just reply with? Answer with the word only.",
     spoken.result.conversation_id);
-  const voice = (await panel.request("sessions/list")).filter((s) => s.source.channel === "voice");
-  check(voice.length === 1 && voice[0].source.key.startsWith("user:")
-    && voice[0].conversation_ids.includes(spoken.result.conversation_id)
+  // The sessions holding this conversation: exactly one, a voice session of the user who spoke. Other voice sessions
+  // may be listed (Assist used by hand in the test environment), so the check looks for this one only.
+  const voice = (await panel.request("sessions/list"))
+    .filter((s) => s.conversation_ids.includes(spoken.result.conversation_id));
+  check(voice.length === 1 && voice[0].source.channel === "voice" && voice[0].source.key.startsWith("user:")
     && again.result.conversation_id === spoken.result.conversation_id && /pong/i.test(again.speech),
     `one voice session for the conversation, named ${JSON.stringify(voice[0]?.source.name)}`);
   await panel.request("sessions/close", { session_id: voice[0].session_id });
