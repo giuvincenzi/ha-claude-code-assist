@@ -24,9 +24,8 @@ The Makefile, the containers and the test Home Assistant.
 - The test environment is privileged and shares the host's kernel: nothing in it may change
   kernel-wide state. `systemd-binfmt` is masked in `tools/dev/Dockerfile`: it cleared the host's
   binfmt rules, WSL's interop with Windows programs included.
-- The test Home Assistant gets the Assist integration copied from the repository at every start
-  (`ha-dev-config`), set up from the app's discovery and made the agent of the voice assistant
-  (`ha-dev-setup`), as a user does.
+- At every start the test Home Assistant gets the Assist integration from the repository
+  (`ha-dev-config`), set up from discovery and made the voice assistant's agent (`ha-dev-setup`).
   `make integration-sync` copies it again after a change and restarts Home Assistant Core.
 - Its data is clean at every start (`/mnt/supervisor` is a tmpfs, made a shared mount for Home
   Assistant); image caches are volumes. The production Home Assistant is never used for tests.

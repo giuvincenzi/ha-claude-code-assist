@@ -6,6 +6,7 @@ paths:
   - "ha_claude_code_assist/core/ha_cca/app.py"
   - "ha_claude_code_assist/core/ha_cca/transcripts.py"
   - "ha_claude_code_assist/core/ha_cca/attachments.py"
+  - "ha_claude_code_assist/core/ha_cca/assist.py"
 ---
 
 # Data
@@ -13,8 +14,8 @@ paths:
 What the app keeps in `/data` and how it stays compatible between versions.
 
 - `/data` holds: `options.json` (Supervisor), `token.json` (when the current token was first
-  seen, for its expiry), `memory/` (`memory.json` in a git repository), `sessions/` and
-  `claude/` (Claude Code's own state and transcripts; the core never writes there).
+  seen, for its expiry), `assist_token` (Assist's token), `memory/` (`memory.json` in a git
+  repository), `sessions/` and `claude/` (Claude Code's own state; the core never writes there).
 - `sessions/<session_id>/` holds the record (`session.json`) and `workdir/`, the session's
   working directory with the attached files in `attachments/`. Claude Code reads only
   `workdir/`, so the record stays outside it.

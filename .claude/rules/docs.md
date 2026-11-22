@@ -14,6 +14,8 @@ paths:
   - "ha_claude_code_assist/core/ha_cca/mcp_check.py"
   - "ha_claude_code_assist/core/ha_cca/claude_process.py"
   - "ha_claude_code_assist/web/src/**"
+  - "custom_components/**"
+  - "hacs.json"
 ---
 
 # Documentation and texts
@@ -21,13 +23,13 @@ paths:
 The README files, the user documentation and the changelog, laid out as in every Home Assistant
 app repository, and how every text the user reads is written.
 
-- Every text the user reads (labels, hints, badges, tooltips, dialogs, errors from the panel or
-  the core, the Configuration tab, `DOCS.md`) is a natural sentence, the way a person would say
-  it: what it is or what happened, and what the user can do next. No pieces glued with colons,
-  semicolons or symbols (`·`, `/`), no shorthand, no internal names (option keys, field names).
-  Short where space is short, but still a sentence. The only `·` is between the name and the
-  time above a chat message. Texts written for Claude (prompt, tool descriptions and errors) are
-  not covered.
+- Every text the user reads (labels, hints, badges, tooltips, dialogs, errors from the panel,
+  the core or the integration, what Assist says, the Configuration tab, `DOCS.md`) is a natural
+  sentence, the way a person would say it: what it is or what happened, and what the user can do
+  next. No pieces glued with colons, semicolons or symbols (`·`, `/`), no shorthand, no internal
+  names (option keys, field names). Short where space is short, but still a sentence. The only
+  `·` is between the name and the time above a chat message. Texts written for Claude (prompt,
+  tool descriptions and errors) are not covered.
 - The same thing has one name everywhere: a conversation with the assistant is a "session"
   (tab, buttons, settings, documentation); the subscription token is the "setup token".
 - The name shown everywhere is "HA Claude Code Assist", matching the repository
