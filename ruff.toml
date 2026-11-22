@@ -1,0 +1,8 @@
+# Python lint (`make lint`): ruff's default rules on all the Python of the repository (the core, the integration, their
+# tests and the test environment's tools).
+target-version = "py313"
+extend-include = ["tools/dev/ha-dev-ws"]
+# Our own packages, so imports group them apart from third-party ones: the core's ha_cca and the integration.
+src = ["ha_claude_code_assist/core", "."]
+# The code is written up to 120 characters a line: imports wrap at the same width.
+line-length = 120

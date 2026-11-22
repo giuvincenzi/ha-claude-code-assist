@@ -24,7 +24,7 @@ def text(result):
 
 
 async def test_memory_add_and_full_memory_error_is_explained(setup):
-    server, store, _ = setup
+    server, _, _ = setup
     assert "Saved as memory entry 1" in text(await server.call_tool("ha_cca_memory_add", {"text": "First fact"}))
     with pytest.raises(ToolError, match=r"The memory is full with 1 entry\. Remove an entry first, in the Memory tab"):
         await server.call_tool("ha_cca_memory_add", {"text": "Second fact"})

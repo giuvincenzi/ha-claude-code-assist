@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0
+## Unreleased
 
-First version.
+### Added
 
 - The HA Claude Code Assist panel with Chat, Memory, Tools, Sessions and Settings. Answers are
   shown as they are written, formatted with lists, tables, code and links, together with the
@@ -18,8 +18,8 @@ First version.
   downloaded.
 - Long-term memory, saved only on request and editable in the panel.
 - Voice through Home Assistant Assist, with the HA Claude Code Assist integration installed from
-  the Marketplace or HACS. Home Assistant finds the app by itself, and each voice assistant device has its own
-  session.
+  the Marketplace or HACS. Home Assistant finds the app by itself, and each voice assistant
+  device has its own session.
 - Every setting in the panel and in the app's Configuration tab.
 - An icon for the app and for the integration.
 - The chat and the panel's status say when the setup token is missing, rejected or about to

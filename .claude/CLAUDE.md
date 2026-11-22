@@ -10,6 +10,8 @@ The rules live in `.claude/rules/`, one file per topic. Each opens with a short 
 what it covers, then its bullets:
 
 - `working-rules.md`: how Claude works with the owner on this project
+- `git-workflow.md`: how every change is made in git and reaches `main`
+- `build-and-release.md`: how the app is built and how the app and the integration are released
 - `architecture.md`: how the app and its core are organized
 - `sessions.md`: how conversations map to Claude Code sessions and processes
 - `data.md`: what the app keeps in `/data` and how it stays compatible

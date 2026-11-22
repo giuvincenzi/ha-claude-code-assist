@@ -53,4 +53,5 @@ app repository, and how every text the user reads is written.
   limits. What is not built yet is said to be planned, never described as available.
 - A change to what the user sees or does (a setting, a panel tab, sessions, memory, tools)
   updates `DOCS.md` in the same change, `translations/en.yaml` when a setting changes, and adds a
-  line to `ha_claude_code_assist/CHANGELOG.md` under the version being prepared.
+  line to `ha_claude_code_assist/CHANGELOG.md` under `## Unreleased`, in Added, Changed or Fixed
+  (`build-and-release.md`).

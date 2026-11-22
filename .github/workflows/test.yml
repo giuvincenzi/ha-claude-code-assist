@@ -1,0 +1,207 @@
+# The tests, as the Makefile runs them: lint (`make lint`: ruff, the panel's TypeScript types and ESLint), the core's
+# tests and the release script's (`make test`), the integration's tests (`make test-integration`), and the app built as
+# the Supervisor builds it, on each processor the app supports. The required checks for merging into main are unit_test
+# and build_test (.claude/rules/git-workflow.md). The end-to-end tests need the test environment and a real Claude
+# Code token: they run locally only (`make app-smoke`, .claude/rules/testing.md).
+# Starts on:
+#   - every pull request (each push to its branch) and every push to main;
+#   - workflow_dispatch: `gh workflow run test.yml --ref <branch>`, to run the tests on a branch;
+#   - workflow_call: publish_release runs it before publishing (job run_tests).
+# decide_which_tests_run looks once at the changed files and tells which checks can change their result, each from the
+# files it reads. A check that is not needed doesn't run, and its summary job still passes. Called by publish_release
+# or started by hand, everything runs.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  decide_which_tests_run:
+    runs-on: ubuntu-latest
+    outputs:
+      lint: ${{ steps.decide.outputs.lint }}
+      unit: ${{ steps.decide.outputs.unit }}
+      integration: ${{ steps.decide.outputs.integration }}
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the changed files: the diff of the pull request or of the push
+
+      - name: choose_tests_from_changed_files
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          # Called by publish_release, github.workflow is the caller's: everything runs; started by hand, everything.
+          range=()
+          if [ "$WORKFLOW" = test ]; then
+            case "$EVENT" in
+              pull_request) range=(HEAD^1 HEAD) ;;
+              push) range=("$BEFORE" "$GITHUB_SHA") ;;
+            esac
+          fi
+          lint=true
+          unit=true
+          integration=true
+          build=true
+          if [ ${#range[@]} -gt 0 ] && files=$(git diff --name-only "${range[@]}"); then
+            # Each check runs when a file it reads changed (.claude/rules/testing.md, "On GitHub"). The Makefile,
+            # compose.yaml and this workflow run them all, so they count for every check.
+            tooling='^(Makefile|compose\.yaml|\.github/workflows/test\.yml)$'
+            lint=false
+            unit=false
+            integration=false
+            build=false
+            if grep -qE "$tooling|\.py$|^tools/dev/ha-dev-ws$|^ruff\.toml$|^ha_claude_code_assist/(web/|core/requirements-dev)" <<< "$files"; then lint=true; fi
+            if grep -qE "$tooling|^ha_claude_code_assist/|^scripts/release" <<< "$files"; then unit=true; fi
+            if grep -qE "$tooling|^custom_components/|^integration-tests/" <<< "$files"; then integration=true; fi
+            if grep -qE "$tooling|^ha_claude_code_assist/" <<< "$files"; then build=true; fi
+          fi
+          {
+            echo "lint=$lint"
+            echo "unit=$unit"
+            echo "integration=$integration"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+          echo "Lint: $lint. Core tests: $unit. Integration tests: $integration. App build: $build." >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    needs: decide_which_tests_run
+    if: needs.decide_which_tests_run.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+
+      - name: run_lint
+        run: make lint
+
+  core_test:
+    needs: decide_which_tests_run
+    if: needs.decide_which_tests_run.outputs.unit == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+
+      - name: run_core_tests
+        run: make test
+
+  integration_test:
+    needs: decide_which_tests_run
+    if: needs.decide_which_tests_run.outputs.integration == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+
+      - name: run_integration_tests
+        run: make test-integration
+
+  # The required check: lint, the core's, the release script's and the integration's tests passed (or were not needed),
+  # and the version is changed only by a release pull request and is the same for the app and the integration.
+  unit_test:
+    needs: [decide_which_tests_run, lint, core_test, integration_test]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      DECIDE: ${{ needs.decide_which_tests_run.result }}
+      LINT: ${{ needs.decide_which_tests_run.outputs.lint }}
+      LINT_RESULT: ${{ needs.lint.result }}
+      UNIT: ${{ needs.decide_which_tests_run.outputs.unit }}
+      UNIT_RESULT: ${{ needs.core_test.result }}
+      INTEGRATION: ${{ needs.decide_which_tests_run.outputs.integration }}
+      INTEGRATION_RESULT: ${{ needs.integration_test.result }}
+    steps:
+      - name: stop_if_undecided
+        if: env.DECIDE != 'success'
+        run: |
+          echo "::error::decide_which_tests_run did not finish: the checks to run are unknown."
+          exit 1
+
+      - name: checkout_code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # block_version_change compares with the pull request's base
+
+      - name: install_node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.1 # the version of the node service in compose.yaml
+
+      - name: check_versions_agree
+        run: node scripts/release.mjs version
+
+      # Only a release pull request (branch release/X.Y.Z, opened by create_release_pr) changes the version: merging it
+      # publishes the release (publish_release).
+      - name: block_version_change
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/')
+        run: |
+          for file in ha_claude_code_assist/config.yaml custom_components/ha_claude_code_assist/manifest.json; do
+            if [ "$(git show "HEAD^1:$file" | grep -E '^ *"?version"?:')" != "$(git show "HEAD:$file" | grep -E '^ *"?version"?:')" ]; then
+              echo "::error file=$file::Only the release pull request (create_release_pr) changes the version: merging it publishes a release."
+              exit 1
+            fi
+          done
+
+      - name: check_results
+        run: |
+          failed=0
+          check() { # <needed> <result> <name>
+            if [ "$1" != true ]; then echo "$3: not needed, no changed file is one it reads." | tee -a "$GITHUB_STEP_SUMMARY"
+            elif [ "$2" != success ]; then echo "::error::$3: $2."; failed=1
+            else echo "$3: passed." | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          }
+          check "$LINT" "$LINT_RESULT" "Lint (job lint)"
+          check "$UNIT" "$UNIT_RESULT" "Core tests (job core_test)"
+          check "$INTEGRATION" "$INTEGRATION_RESULT" "Integration tests (job integration_test)"
+          exit "$failed"
+
+  # The app built from its Dockerfile, as the Supervisor builds it on the user's machine, on each processor of arch in
+  # config.yaml, each on a GitHub machine of that processor (no emulation).
+  build_app:
+    needs: decide_which_tests_run
+    if: needs.decide_which_tests_run.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: checkout_code
+        uses: actions/checkout@v7
+
+      - name: build_image
+        run: docker build --build-arg BUILD_ARCH=${{ matrix.arch }} ha_claude_code_assist
+
+  # The required check: the app built on every processor (or the build was not needed).
+  build_test:
+    needs: [decide_which_tests_run, build_app]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      DECIDE: ${{ needs.decide_which_tests_run.result }}
+      BUILD: ${{ needs.decide_which_tests_run.outputs.build }}
+      BUILD_RESULT: ${{ needs.build_app.result }}
+    steps:
+      - name: check_results
+        run: |
+          if [ "$DECIDE" != success ]; then echo "::error::decide_which_tests_run did not finish: the checks to run are unknown."; exit 1; fi
+          if [ "$BUILD" != true ]; then echo "App build: not needed, no changed file is one it reads." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          if [ "$BUILD_RESULT" != success ]; then echo "::error::App build (job build_app): $BUILD_RESULT."; exit 1; fi
+          echo "App build: passed on every processor." | tee -a "$GITHUB_STEP_SUMMARY"

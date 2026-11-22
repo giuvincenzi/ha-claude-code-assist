@@ -3,13 +3,14 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
+from ha_cca import sessions as sessions_module
 from ha_cca.claude_process import ProcessExitedError
 from ha_cca.config import parse_options
 from ha_cca.launch import build_launch_spec
-from ha_cca import sessions as sessions_module
 from ha_cca.sessions import ClaudeSession, SessionManager, SessionSettings, SessionStore, TurnError
 
 
@@ -24,7 +25,7 @@ class FakeProcess:
     every turn (the one given with --session-id, or the resumed one) and its usage as the
     conversation's running total (`modelUsage`)."""
 
-    instances: list["FakeProcess"] = []
+    instances: ClassVar[list["FakeProcess"]] = []  # every process started, reset by each test
     fail_next = False
     reject_token_next = False
     # When set, the next new conversation reports this id instead of the one it was given.
