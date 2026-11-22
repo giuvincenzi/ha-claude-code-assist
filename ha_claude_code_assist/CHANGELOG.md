@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0
+
 ### Changed
 
 - A session now ends after 50 minutes without messages by default, instead of 5, so a
