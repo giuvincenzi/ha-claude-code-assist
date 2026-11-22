@@ -1,0 +1,17 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Starts the core: panel (HTTP + WebSocket) and the internal MCP endpoint.
+# The core reads its options from /data/options.json; SUPERVISOR_TOKEN (from
+# the container environment) lets it update them through the Supervisor API.
+
+# An API key would take precedence over the subscription token in -p mode.
+unset ANTHROPIC_API_KEY
+export HA_CCA_DATA_DIR=/data
+export HA_CCA_WEB_DIR=/opt/web
+
+bashio::log.info "Starting core"
+exec /opt/venv/bin/uvicorn ha_cca.app:app \
+    --app-dir /opt/core \
+    --host 0.0.0.0 \
+    --port 8099 \
+    --no-proxy-headers

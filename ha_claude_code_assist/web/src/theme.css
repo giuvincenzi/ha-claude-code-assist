@@ -1,0 +1,93 @@
+/*
+ * Design tokens: the only place where colours, spacing, radii and type are defined.
+ * Components in src/ui/ read these variables (they cross the shadow DOM boundary).
+ */
+:root {
+  color-scheme: light dark;
+
+  --hca-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --hca-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --hca-text-xs: 11px;
+  --hca-text-sm: 13px;
+  --hca-text-md: 14px;
+  --hca-text-lg: 16px;
+  --hca-text-xl: 20px;
+
+  --hca-space-1: 4px;
+  --hca-space-2: 8px;
+  --hca-space-3: 12px;
+  --hca-space-4: 16px;
+  --hca-space-5: 24px;
+  --hca-space-6: 32px;
+
+  --hca-radius-sm: 6px;
+  --hca-radius: 10px;
+  --hca-radius-lg: 16px;
+  --hca-radius-full: 999px;
+
+  --hca-page-width: 960px;
+  --hca-page-width-narrow: 760px;
+  --hca-attachment-size: 120px;
+  --hca-backdrop: rgb(0 0 0 / 0.72);
+  --hca-on-backdrop: #f2f3f5;
+
+  --hca-bg: #f5f6f8;
+  --hca-surface: #ffffff;
+  --hca-surface-muted: #f0f1f4;
+  --hca-text: #1b1d22;
+  --hca-text-muted: #646a75;
+  --hca-border: #e1e4ea;
+  --hca-border-strong: #c9ced8;
+  --hca-accent: #0b7fd6;
+  --hca-accent-hover: #096cb6;
+  --hca-accent-soft: #e3f1fc;
+  --hca-on-accent: #ffffff;
+  --hca-ok: #1e7f45;
+  --hca-ok-soft: #e4f4ea;
+  --hca-warn: #9a5b00;
+  --hca-warn-soft: #fbf0dc;
+  --hca-error: #c42b2b;
+  --hca-error-soft: #fbe7e7;
+  --hca-focus: 0 0 0 3px rgb(11 127 214 / 0.35);
+  --hca-shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hca-bg: #111317;
+    --hca-surface: #1b1e24;
+    --hca-surface-muted: #23272e;
+    --hca-text: #e6e8ec;
+    --hca-text-muted: #9aa1ad;
+    --hca-border: #2c3038;
+    --hca-border-strong: #3a3f49;
+    --hca-accent: #3d9fe8;
+    --hca-accent-hover: #5bb0ef;
+    --hca-accent-soft: #15324a;
+    --hca-on-accent: #0b1520;
+    --hca-ok: #4cc27a;
+    --hca-ok-soft: #13301f;
+    --hca-warn: #e3a74a;
+    --hca-warn-soft: #36290f;
+    --hca-error: #f06a6a;
+    --hca-error-soft: #3a1a1a;
+    --hca-focus: 0 0 0 3px rgb(61 159 232 / 0.45);
+    --hca-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+}
+
+/* Thin scrollbars in the theme's colours; both properties inherit into every component. */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hca-border-strong) transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--hca-bg);
+  color: var(--hca-text);
+  font-family: var(--hca-font);
+  font-size: var(--hca-text-md);
+}

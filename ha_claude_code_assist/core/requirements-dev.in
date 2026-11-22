@@ -1,0 +1,4 @@
+# Test dependencies, constrained by the runtime ones. Locked by `make lock`.
+-c requirements.txt
+pytest==9.2.0
+pytest-asyncio==1.4.1

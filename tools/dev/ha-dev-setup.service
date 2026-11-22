@@ -1,0 +1,15 @@
+[Unit]
+Description=Provision the test Home Assistant (owner user, MCP Server, app)
+Requires=ha-supervisor.service
+After=ha-supervisor.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Values from .env, passed to the container by compose.yaml.
+PassEnvironment=TEST_HA_USERNAME TEST_HA_PASSWORD CLAUDE_CODE_OAUTH_TOKEN
+ExecStart=/usr/local/bin/ha-dev-setup
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

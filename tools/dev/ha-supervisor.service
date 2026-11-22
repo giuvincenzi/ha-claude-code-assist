@@ -1,0 +1,20 @@
+[Unit]
+Description=Home Assistant Supervisor (test environment)
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=simple
+Environment=SUPERVISOR_CHANNEL=beta
+# /mnt/supervisor is a tmpfs (clean data at every start); Home Assistant
+# needs it to be a shared mount for the media and share folders.
+ExecStartPre=/bin/mount --make-rshared /mnt/supervisor
+ExecStartPre=/usr/local/bin/ha-dev-config
+ExecStart=/usr/bin/supervisor_run
+ExecStop=/usr/bin/docker stop hassio_supervisor
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

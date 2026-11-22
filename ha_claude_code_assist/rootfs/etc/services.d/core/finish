@@ -1,0 +1,8 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Stops the app when the core exits unexpectedly, so the Supervisor sees it.
+
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "Core exited with code ${1}, stopping the app"
+    /run/s6/basedir/bin/halt
+fi

@@ -1,0 +1,68 @@
+[
+  {
+    "name": "No MCP server, web search off",
+    "settings": {"mcp": "none", "web_search": false},
+    "messages": [
+      "Hi! What can you do?",
+      "Turn on the kitchen lights",
+      "What time is it?",
+      "Who wrote Pride and Prejudice?",
+      "Are there any Juventus matches today?",
+      "How do I add control of my home?",
+      "How long does a conversation last, and which model are you using?"
+    ]
+  },
+  {
+    "name": "Home Assistant's MCP Server, web search off",
+    "settings": {"mcp": "test", "web_search": false},
+    "messages": [
+      "What can you do now?",
+      "Which lights are on?",
+      "Turn off the kitchen light",
+      "Turn it back on at 30%",
+      "Turn off all the lights and tell me the temperature",
+      "Turn on the light",
+      "Turn on the garage light",
+      "Turn on the living room light and the bedroom light, and close all the blinds",
+      "How is the thermostat set? Raise it by one degree",
+      "What time is it in Tokyo right now?"
+    ]
+  },
+  {
+    "name": "Home Assistant's MCP Server, web search on",
+    "settings": {"mcp": "test", "web_search": true},
+    "messages": [
+      "Are there any Juventus matches today?",
+      "What's the weather in Milan tomorrow?"
+    ]
+  },
+  {
+    "name": "Memory",
+    "settings": {"mcp": "none", "memory_enabled": true, "memory_max_entries": 100},
+    "memory": [],
+    "messages": [
+      "Remember that the study is the room called Office",
+      "What do you remember about me?",
+      "Forget what I told you about the study",
+      "Remember that the cat is called Pixel and that my favourite colour is blue",
+      "Delete everything you remember",
+      "yes"
+    ]
+  },
+  {
+    "name": "Memory full",
+    "settings": {"mcp": "none", "memory_enabled": true, "memory_max_entries": 1},
+    "memory": ["The cat is called Pixel"],
+    "messages": [
+      "Remember that my surname is Rossi",
+      "What is my cat called?"
+    ]
+  },
+  {
+    "name": "Memory off",
+    "settings": {"mcp": "none", "memory_enabled": false},
+    "messages": [
+      "Remember that my favourite colour is blue"
+    ]
+  }
+]

@@ -1,0 +1,59 @@
+configuration:
+  claude_code_oauth_token:
+    name: Setup token
+    description: >-
+      The Claude subscription the assistant uses. To create it, run claude setup-token
+      in a terminal on a computer where Claude Code is logged in with your Claude
+      account. The token is valid for one year.
+  model:
+    name: Model
+    description: >-
+      Haiku is the fastest and uses the least of your subscription. Sonnet balances
+      speed and capability. Opus is the most capable, but it is slower and uses the
+      most.
+  effort:
+    name: Effort
+    description: >-
+      How much the assistant thinks before answering. Higher effort gives more careful
+      answers, but they are slower and use more of your subscription.
+  web_search:
+    name: Web search
+    description: >-
+      Lets the assistant search the web and read web pages, for news and up-to-date
+      information.
+  read_files:
+    name: Read files
+    description: >-
+      Lets the assistant open images, PDFs and text files. It can read only the files
+      of its own session.
+  mcp_servers:
+    name: MCP servers
+    description: >-
+      The assistant's tools, in Claude Code's JSON format, for example
+      {"mcpServers": {"home-assistant": {"type": "http", "url": "..."}}}. Every tool of
+      these servers is available to the assistant, and more tools use more of your
+      subscription. They are easier to edit in the Tools tab of the HA Claude Code
+      Assist panel.
+  session_timeout_minutes:
+    name: Session timeout in minutes
+    description: >-
+      A session ends after this many minutes without messages. The next message starts
+      a new session, which remembers only what is in long-term memory.
+  session_retention_days:
+    name: Days to keep sessions
+    description: >-
+      Sessions with no messages for longer than this are deleted, together with their
+      messages. Long-term memory is not affected.
+  memory_enabled:
+    name: Long-term memory
+    description: >-
+      Lets the assistant remember facts across sessions. It saves one only when you
+      ask it to remember something.
+  memory_max_entries:
+    name: Maximum memory entries
+    description: >-
+      When the memory is full, the assistant tells you, and nothing more is saved until
+      you remove an entry.
+  memory_max_entry_length:
+    name: Maximum memory entry length
+    description: The longest a single memory entry can be, in characters.

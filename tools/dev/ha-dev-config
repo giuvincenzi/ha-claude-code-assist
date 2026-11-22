@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Writes the test Home Assistant's configuration before its first start (its
+# data is on a tmpfs, so this runs on a clean folder at every start): the
+# default integrations plus the Demo integration, whose fake devices (lights,
+# climate, covers, media players...) the tests use, and the project's own
+# integration for Assist (custom_components/), as HACS would install it.
+set -euo pipefail
+
+config_dir=/mnt/supervisor/homeassistant
+mkdir -p "${config_dir}"
+if [[ ! -f "${config_dir}/configuration.yaml" ]]; then
+    cat > "${config_dir}/configuration.yaml" <<'EOF'
+default_config:
+
+# Fake devices for the tests.
+demo:
+EOF
+fi
+integration=/mnt/supervisor/apps/local/ha-claude-code-assist/custom_components/ha_claude_code_assist
+rm -rf "${config_dir}/custom_components/ha_claude_code_assist"
+mkdir -p "${config_dir}/custom_components"
+cp -r "${integration}" "${config_dir}/custom_components/"

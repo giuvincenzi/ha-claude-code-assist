@@ -1,0 +1,98 @@
+# Every container of the project, grouped under one Compose project.
+#
+# - dev: the test environment. Supervisor, Home Assistant and the app run in
+#   the Docker daemon inside it. It provisions itself at every start (see
+#   tools/dev), so `docker compose up` or Start in Docker Desktop is enough.
+# - tools profile: short-lived containers run by the Makefile.
+
+name: ha-claude-code-assist
+
+services:
+  dev:
+    build: tools/dev
+    image: ha-claude-code-assist-dev
+    container_name: ha-claude-code-assist-dev
+    privileged: true
+    env_file:
+      - .env
+    ports:
+      # Local machine only. Home Assistant Core listens on port 80 in new
+      # installations (8123 only redirects to it until onboarding).
+      - "127.0.0.1:7123:80"
+      - "127.0.0.1:7357:4357"
+    volumes:
+      # The repository, seen by the Supervisor as a local app.
+      - .:/mnt/supervisor/apps/local/ha-claude-code-assist
+      # Image caches: kept across starts, so nothing is downloaded again.
+      - docker:/var/lib/docker
+      - containerd:/var/lib/containerd
+    tmpfs:
+      - /tmp
+      # Supervisor and Home Assistant data: clean at every start.
+      - /mnt/supervisor
+
+  uv:
+    profiles: [tools]
+    image: ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim
+    user: ${UID_GID:-1000:1000}
+    environment:
+      UV_CACHE_DIR: /tmp/uv-cache
+    volumes:
+      - ./ha_claude_code_assist/core:/work
+    working_dir: /work
+    tmpfs:
+      - /tmp
+
+  node:
+    profiles: [tools]
+    image: node:24.22.1-trixie-slim
+    user: ${UID_GID:-1000:1000}
+    environment:
+      npm_config_cache: /tmp/npm-cache
+    volumes:
+      - ./ha_claude_code_assist/web:/web
+    working_dir: /web
+    tmpfs:
+      - /tmp
+
+  smoke:
+    profiles: [tools]
+    image: node:24.22.1-trixie-slim
+    env_file:
+      - .env
+    environment:
+      HA_URL: http://dev:80
+    volumes:
+      - ./scripts:/scripts:ro
+    command: node /scripts/app-smoke.mjs
+
+  test:
+    profiles: [tools]
+    # The app image (same Python, packages and git as in production) plus
+    # test dependencies; the source is mounted, so no rebuild per change.
+    build:
+      context: ha_claude_code_assist
+      target: test
+    image: ha-claude-code-assist-test
+    entrypoint: []
+    volumes:
+      - ./ha_claude_code_assist/core:/src:ro
+    working_dir: /src
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: /opt/venv/bin/python -m pytest -p no:cacheprovider
+
+  test-integration:
+    profiles: [tools]
+    # The integration's tests: Home Assistant's own test helpers and the version they pin.
+    build: integration-tests
+    image: ha-claude-code-assist-test-integration
+    volumes:
+      - ./custom_components:/work/custom_components:ro
+      - ./integration-tests/tests:/work/tests:ro
+      - ./integration-tests/pytest.ini:/work/pytest.ini:ro
+    command: python -m pytest -p no:cacheprovider
+
+volumes:
+  docker:
+  containerd:

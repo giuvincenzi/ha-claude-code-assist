@@ -1,0 +1,14 @@
+{
+  "domain": "ha_claude_code_assist",
+  "name": "HA Claude Code Assist",
+  "after_dependencies": ["assist_pipeline", "hassio"],
+  "codeowners": ["@giuvincenzi"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/giuvincenzi/ha-claude-code-assist",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/giuvincenzi/ha-claude-code-assist/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

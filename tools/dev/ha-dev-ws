@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Home Assistant WebSocket commands the test environment needs and the REST API lacks.
+
+Logs in as the test user (TEST_HA_USERNAME, TEST_HA_PASSWORD), then:
+  ha-dev-ws time-zone <IANA name>   sets Home Assistant's time zone
+  ha-dev-ws long-lived-token        prints a new long-lived access token
+  ha-dev-ws discovered-flow <domain>  prints the id of the setup a discovery started, if any
+  ha-dev-ws assist-agent <domain>   makes the conversation agent of <domain> the one of the
+                                    preferred voice assistant, as Settings > Voice assistants does
+"""
+
+import asyncio
+import json
+import os
+import sys
+import urllib.parse
+import urllib.request
+
+from websockets.asyncio.client import connect
+
+HA_URL = "http://localhost:80"
+CLIENT_ID = f"{HA_URL}/"
+
+
+def post(path: str, body: bytes, content_type: str) -> dict:
+    request = urllib.request.Request(f"{HA_URL}{path}", data=body, headers={"Content-Type": content_type})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read())
+
+
+def access_token() -> str:
+    flow = post("/auth/login_flow", json.dumps({
+        "client_id": CLIENT_ID, "handler": ["homeassistant", None], "redirect_uri": CLIENT_ID,
+    }).encode(), "application/json")
+    step = post(f"/auth/login_flow/{flow['flow_id']}", json.dumps({
+        "client_id": CLIENT_ID,
+        "username": os.environ["TEST_HA_USERNAME"],
+        "password": os.environ["TEST_HA_PASSWORD"],
+    }).encode(), "application/json")
+    token = post("/auth/token", urllib.parse.urlencode({
+        "grant_type": "authorization_code", "code": step["result"], "client_id": CLIENT_ID,
+    }).encode(), "application/x-www-form-urlencoded")
+    return token["access_token"]
+
+
+async def command(message: dict) -> object:
+    async with connect(f"ws://localhost:80/api/websocket") as ws:
+        await ws.recv()  # auth_required
+        await ws.send(json.dumps({"type": "auth", "access_token": access_token()}))
+        if json.loads(await ws.recv())["type"] != "auth_ok":
+            raise SystemExit("Home Assistant refused the test user")
+        await ws.send(json.dumps({"id": 1, **message}))
+        reply = json.loads(await ws.recv())
+        if not reply.get("success"):
+            raise SystemExit(f"{message['type']} failed: {reply.get('error')}")
+        return reply.get("result")
+
+
+# What the voice assistant dialog sends when it saves an assistant, besides its agent.
+PIPELINE_FIELDS = ("name", "language", "prefer_local_intents", "stt_engine", "stt_language", "tts_engine",
+                   "tts_language", "tts_voice", "wake_word_entity", "wake_word_id")
+
+
+def assist_agent(domain: str) -> None:
+    entries = [e for e in asyncio.run(command({"type": "config_entries/get", "domain": domain}))
+               if e["state"] == "loaded"]
+    if not entries:
+        raise SystemExit(f"{domain} is not set up")
+    registry = asyncio.run(command({"type": "config/entity_registry/list"}))
+    agent = next(e["entity_id"] for e in registry
+                 if e["config_entry_id"] == entries[0]["entry_id"] and e["entity_id"].startswith("conversation."))
+    pipelines = asyncio.run(command({"type": "assist_pipeline/pipeline/list"}))
+    pipeline = next(p for p in pipelines["pipelines"] if p["id"] == pipelines["preferred_pipeline"])
+    asyncio.run(command({
+        "type": "assist_pipeline/pipeline/update", "pipeline_id": pipeline["id"],
+        **{key: pipeline.get(key) for key in PIPELINE_FIELDS},
+        # "*": the agent takes every language, as the dialog saves it for such an agent.
+        "conversation_engine": agent, "conversation_language": "*",
+    }))
+
+
+def main() -> None:
+    match sys.argv[1:]:
+        case ["time-zone", name]:
+            asyncio.run(command({"type": "config/core/update", "time_zone": name}))
+        case ["discovered-flow", domain]:
+            flows = asyncio.run(command({"type": "config_entries/flow/progress"}))
+            ids = [f["flow_id"] for f in flows if f["handler"] == domain and f["context"]["source"] == "hassio"]
+            if not ids:
+                raise SystemExit(f"no discovered setup for {domain}")
+            print(ids[0])
+        case ["assist-agent", domain]:
+            assist_agent(domain)
+        case ["long-lived-token"]:
+            print(asyncio.run(command({
+                "type": "auth/long_lived_access_token", "client_name": "HA Claude Code Assist tests",
+                "lifespan": 30,
+            })))
+        case _:
+            raise SystemExit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

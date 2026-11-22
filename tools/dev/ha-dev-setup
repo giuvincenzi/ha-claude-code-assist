@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Provisions the test Home Assistant at every start of the dev container
+# (its data is on a tmpfs, so every start is clean):
+# 1. onboarding with the owner user from .env, and the Supervisor's time zone;
+# 2. Home Assistant's MCP Server integration and a long-lived token for it;
+# 3. the app from the local folder, with the Claude Code token from .env and
+#    Home Assistant's MCP Server as its MCP server;
+# 4. the integration for Assist, set up from the app's Supervisor discovery,
+#    as a user does with one click, and made the conversation agent of the
+#    voice assistant.
+set -euo pipefail
+
+# Home Assistant Core runs on the host network of this container.
+HA_URL="http://localhost:80"
+CLIENT_ID="${HA_URL}/"
+APP="local_ha_claude_code_assist"
+
+: "${TEST_HA_USERNAME:?TEST_HA_USERNAME is not set in .env}"
+: "${TEST_HA_PASSWORD:?TEST_HA_PASSWORD is not set in .env}"
+: "${CLAUDE_CODE_OAUTH_TOKEN:?CLAUDE_CODE_OAUTH_TOKEN is not set in .env}"
+
+log() { echo "[ha-dev-setup] $*"; }
+
+# wait_for <description> <command...>: retries every 5 s for up to 20 minutes.
+wait_for() {
+    local what="$1"
+    shift
+    for _ in $(seq 1 240); do
+        if "$@" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 5
+    done
+    log "Timed out waiting for ${what}"
+    return 1
+}
+
+supervisor_api() { # <method> <path>, JSON body on stdin
+    docker exec -i hassio_cli sh -c \
+        "curl -sS --fail-with-body -X $1 -H \"Authorization: Bearer \${SUPERVISOR_TOKEN}\" \
+         -H 'Content-Type: application/json' --data-binary @- http://supervisor$2"
+}
+
+log "Waiting for Home Assistant"
+wait_for "Home Assistant" curl -fsS "${HA_URL}/api/onboarding"
+
+if curl -fsS "${HA_URL}/api/onboarding" | jq -e '.[] | select(.step == "user") | .done' > /dev/null; then
+    log "Onboarding already done"
+else
+    log "Onboarding: creating user ${TEST_HA_USERNAME}"
+    auth_code="$(jq -n --arg c "${CLIENT_ID}" --arg u "${TEST_HA_USERNAME}" --arg p "${TEST_HA_PASSWORD}" \
+        '{client_id: $c, name: "Test", username: $u, password: $p, language: "en"}' \
+        | curl -fsS -X POST -H "Content-Type: application/json" --data-binary @- \
+            "${HA_URL}/api/onboarding/users" | jq -r .auth_code)"
+    token="$(curl -fsS -X POST "${HA_URL}/auth/token" \
+        --data-urlencode "grant_type=authorization_code" \
+        --data-urlencode "code=${auth_code}" \
+        --data-urlencode "client_id=${CLIENT_ID}" | jq -r .access_token)"
+    for step in core_config analytics; do
+        curl -fsS -X POST -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+            --data '{}' "${HA_URL}/api/onboarding/${step}" > /dev/null
+    done
+    jq -n --arg c "${CLIENT_ID}" '{client_id: $c, redirect_uri: ($c + "?auth_callback=1")}' \
+        | curl -fsS -X POST -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+            --data-binary @- "${HA_URL}/api/onboarding/integration" > /dev/null
+fi
+
+log "Waiting for the Supervisor"
+wait_for "the Supervisor" ha supervisor info
+
+# Same time zone as the Supervisor, which gives it to the app: the tests compare
+# the times the assistant reads from both.
+time_zone="$(ha supervisor info --raw-json | jq -r .data.timezone)"
+log "Setting Home Assistant's time zone to ${time_zone}"
+ha-dev-ws time-zone "${time_zone}"
+
+log "Setting up Home Assistant's MCP Server"
+ha_token="$(ha-dev-ws long-lived-token)"
+if ! curl -fsS -H "Authorization: Bearer ${ha_token}" "${HA_URL}/api/config/config_entries/entry" \
+    | jq -e '.[] | select(.domain == "mcp_server")' > /dev/null; then
+    flow_id="$(curl -fsS -X POST -H "Authorization: Bearer ${ha_token}" -H "Content-Type: application/json" \
+        --data '{"handler": "mcp_server"}' "${HA_URL}/api/config/config_entries/flow" | jq -r .flow_id)"
+    curl -fsS -X POST -H "Authorization: Bearer ${ha_token}" -H "Content-Type: application/json" \
+        --data '{}' "${HA_URL}/api/config/config_entries/flow/${flow_id}" > /dev/null
+fi
+
+log "Installing the app"
+ha store reload --no-progress
+if [[ "$(ha apps info "${APP}" --raw-json | jq -r '.data.version // empty')" == "" ]]; then
+    ha apps install "${APP}" --no-progress
+fi
+
+log "Setting the app's Claude Code token and MCP servers"
+# The app reaches Home Assistant Core at homeassistant:80 (new installations).
+mcp_servers="$(jq -cn --arg t "${ha_token}" '{mcpServers: {"home-assistant": {
+    type: "http", url: "http://homeassistant:80/api/mcp", headers: {Authorization: ("Bearer " + $t)}}}}')"
+# The Supervisor validates the complete options: start from the current ones.
+options="$(supervisor_api GET "/addons/${APP}/info" < /dev/null | jq -c .data.options)"
+jq -n --argjson o "${options}" --arg t "${CLAUDE_CODE_OAUTH_TOKEN}" --arg m "${mcp_servers}" \
+    '{options: ($o + {claude_code_oauth_token: $t, mcp_servers: $m})}' \
+    | supervisor_api POST "/addons/${APP}/options" > /dev/null
+
+log "Starting the app"
+ha apps start "${APP}" --no-progress
+
+log "Setting up the integration for Assist from the app's discovery"
+wait_for "the app's discovery" ha-dev-ws discovered-flow ha_claude_code_assist
+flow_id="$(ha-dev-ws discovered-flow ha_claude_code_assist)"
+curl -fsS -X POST -H "Authorization: Bearer ${ha_token}" -H "Content-Type: application/json" \
+    --data '{}' "${HA_URL}/api/config/config_entries/flow/${flow_id}" > /dev/null
+log "Making it the conversation agent of the voice assistant"
+wait_for "the integration's agent" ha-dev-ws assist-agent ha_claude_code_assist
+
+log "Ready"

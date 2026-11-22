@@ -1,0 +1,8 @@
+# Tests of the Home Assistant integration (custom_components/), with Home Assistant's own test
+# helpers and the Home Assistant version they pin. Locked by `make lock`.
+pytest-homeassistant-custom-component==0.13.375
+# What Home Assistant installs for its conversation component when it starts (its manifest's
+# requirements, at the versions of the Home Assistant release above).
+gazetteer-matcher==1.1.0
+hassil==3.12.1
+home-assistant-intents==2026.10.6

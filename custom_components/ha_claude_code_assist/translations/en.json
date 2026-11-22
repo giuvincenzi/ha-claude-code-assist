@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "hassio_confirm": {
+        "title": "HA Claude Code Assist",
+        "description": "Use the {app} app as a conversation agent for Assist? You choose it afterwards in Settings > Voice assistants."
+      }
+    },
+    "error": {
+      "cannot_connect": "The app does not answer. Check that it is running, then try again.",
+      "invalid_token": "The app refused its token. Restart the app, then add it again from Discovered."
+    },
+    "abort": {
+      "already_configured": "HA Claude Code Assist is already set up.",
+      "discovery_only": "Home Assistant finds HA Claude Code Assist by itself while the app is running. Start the app, then add it from Discovered in Settings > Devices & services."
+    }
+  }
+}
