@@ -53,7 +53,7 @@ rejected or expired, and orange in the 30 days before it expires.
 ## Sessions
 
 - A session starts with your first message and goes on while you keep writing within the
-  timeout (5 minutes by default).
+  timeout (50 minutes by default).
 - After the timeout, the next message starts a new session. The assistant remembers nothing of
   the previous one, except what is in its long-term memory.
 - A session keeps the model, effort, web search and memory settings it started with. Changes

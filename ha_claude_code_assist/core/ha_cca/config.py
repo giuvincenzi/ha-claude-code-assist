@@ -96,7 +96,7 @@ def parse_options(raw: dict[str, Any]) -> Settings:
         model=model,
         effort=effort,
         mcp_servers=parse_mcp_servers(raw.get("mcp_servers") or '{"mcpServers": {}}'),
-        session_timeout=timedelta(minutes=positive_int("session_timeout_minutes", 5)),
+        session_timeout=timedelta(minutes=positive_int("session_timeout_minutes", 50)),
         session_retention=timedelta(days=positive_int("session_retention_days", 30)),
         memory_enabled=boolean("memory_enabled", True),
         memory_max_entries=positive_int("memory_max_entries", 100),

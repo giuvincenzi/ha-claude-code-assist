@@ -146,7 +146,7 @@ export class HcaSettingsView extends LitElement {
     return html`
       <hca-input id="timeout" type="number" label="Timeout in minutes" min="1" max="1440"
         .value=${String(s.values.session_timeout_minutes)}
-        hint="A session ends after this many minutes without messages. The next message starts a new session, which remembers only what is in long-term memory."></hca-input>
+        hint="A session ends after this many minutes without messages. The next message starts a new session, which remembers only what is in long-term memory. A longer session remembers more, and every answer reads all of it, which uses a little more of your subscription."></hca-input>
       <hca-input id="retention" type="number" label="Days to keep sessions" min="1" max="3650"
         .value=${String(s.values.session_retention_days)}
         hint="Sessions with no messages for longer than this are deleted, together with their messages. Long-term memory is not affected."></hca-input>

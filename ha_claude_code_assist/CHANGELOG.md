@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- A session now ends after 50 minutes without messages by default, instead of 5, so a
+  conversation goes on after a pause. An app whose settings were already saved keeps its own
+  timeout, which you can change in Settings > Sessions.
+
 ## 0.1.0
 
 ### Added
