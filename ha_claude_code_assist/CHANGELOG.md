@@ -21,5 +21,6 @@ First version.
   the Marketplace or HACS. Home Assistant finds the app by itself, and each voice assistant device has its own
   session.
 - Every setting in the panel and in the app's Configuration tab.
+- An icon for the app and for the integration.
 - The chat and the panel's status say when the setup token is missing, rejected or about to
   expire.

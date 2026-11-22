@@ -39,7 +39,8 @@ app repository, and how every text the user reads is written.
   `DOCS.md`. Changing it changes every copy in the same change.
 - Every page that presents the app says it is unofficial and not affiliated with Anthropic, and
   never presents it as made or endorsed by Anthropic ("powered by", "official").
-- `README.md` (repository) is short: name, one line, the paragraph, then Documentation,
+- `README.md` (repository) is short: centred, the icon, the name, the one line, the license badge
+  and the two install buttons (app store, Marketplace); then the paragraph, Documentation,
   Feedback, Development (`.claude/rules/`) and License. It never repeats the documentation.
 - `ha_claude_code_assist/README.md` is the app's presentation in the Home Assistant app store: the
   paragraph only.
