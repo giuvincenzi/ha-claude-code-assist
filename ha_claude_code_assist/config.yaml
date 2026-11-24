@@ -1,5 +1,5 @@
 name: HA Claude Code Assist
-version: "0.2.0"
+version: "0.3.0"
 slug: ha_claude_code_assist
 description: A personal assistant for your home in Home Assistant, running Claude Code on your own Claude subscription.
 url: https://github.com/giuvincenzi/ha-claude-code-assist
