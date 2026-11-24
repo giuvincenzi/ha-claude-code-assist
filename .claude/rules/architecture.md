@@ -27,6 +27,9 @@ How the app and its core are organized.
 - Attached files go over HTTP (`attachment_routes.py`), one request each, never over the panel's
   WebSocket: a large upload would hold up the answers streaming on it. Home Assistant's Ingress
   refuses bodies over 16 MiB, so the panel checks the size before sending.
+- The panel's page is served with `Cache-Control: no-cache` and its hashed assets as `immutable`
+  (`panel_files.py`): without it a browser keeps the page of an older version after an update,
+  and Home Assistant's own reload does not reload the panel's frame.
 - An attached file never runs as a page of Home Assistant's origin (an HTML or SVG file would):
   only pictures (PNG, JPEG, GIF, WebP) are served to be shown; any other file only as a download
   (`Content-Disposition: attachment`); always with `nosniff` and a sandbox policy.

@@ -56,6 +56,8 @@ export class HcaApp extends LitElement {
   readonly connection = coreConnection();
   @state() private tab = "chat";
   @state() private status: Status | null = null;
+  /** The app's version when this page was loaded: another one means the app was updated since. */
+  private pageVersion: string | null = null;
 
   constructor() {
     super();
@@ -71,7 +73,15 @@ export class HcaApp extends LitElement {
   }
 
   private async loadStatus(): Promise<void> {
-    this.status = await this.connection.request<Status>("status/get");
+    const status = await this.connection.request<Status>("status/get");
+    this.pageVersion ??= status.app.version;
+    this.status = status;
+  }
+
+  /** The version the app was updated to while this page was open, if it was. */
+  private get updatedTo(): string | undefined {
+    const version = this.status?.app.version;
+    return version && this.pageVersion && version !== this.pageVersion ? version : undefined;
   }
 
   private renderView() {
@@ -97,7 +107,7 @@ export class HcaApp extends LitElement {
         @hca-select=${(e: CustomEvent<{ id: string }>) => (this.tab = e.detail.id)}></hca-app-header>
       <div class="content">
         <main class=${this.tab}>${this.renderView()}</main>
-        <hca-connection-banner .state=${this.connection.state}></hca-connection-banner>
+        <hca-connection-banner .state=${this.connection.state} .updatedTo=${this.updatedTo}></hca-connection-banner>
       </div>
     `;
   }

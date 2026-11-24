@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import access, supervisor
@@ -25,6 +24,7 @@ from .launch import build_launch_spec
 from .mcp_tools import build_mcp_server
 from .memory import MemoryStore
 from .panel import Panel
+from .panel_files import add_panel_files
 from .sessions import SessionManager, SessionRecord, SessionSettings, SessionStore
 from .transcripts import Transcripts
 from .versions import IntegrationVersion, problem_message
@@ -230,13 +230,7 @@ async def websocket(ws: WebSocket) -> None:
                       ws.headers.get("x-remote-user-display-name") or ws.headers.get("x-remote-user-name"))
 
 
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
-
-
-if (WEB_DIR / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
+add_panel_files(app, WEB_DIR)
 
 # Mounted last: it only serves the MCP path; every other path is matched above.
 app.mount("/", mcp.streamable_http_app(streamable_http_path=access.MCP_PATH, stateless_http=True, json_response=True))

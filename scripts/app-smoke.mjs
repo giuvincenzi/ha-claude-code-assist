@@ -65,7 +65,15 @@ const { info, base, headers } = await ingress(accessToken);
 check(info.state === "started", `app state is ${info.state}`);
 
 const page = await fetch(base, { headers });
-check(page.ok && (await page.text()).includes("hca-app"), "panel page served through Ingress");
+const pageHtml = await page.text();
+check(page.ok && pageHtml.includes("hca-app"), "panel page served through Ingress");
+// The page is checked with the app every time, so an update reaches the browser; its assets,
+// named after their content, are kept for good.
+const assetPath = pageHtml.match(/assets\/[^"']+\.js/)?.[0];
+const asset = assetPath ? await fetch(`${base}${assetPath}`, { headers }) : null;
+check(page.headers.get("cache-control") === "no-cache"
+  && asset?.ok && asset.headers.get("cache-control") === "public, max-age=31536000, immutable",
+  `through Ingress the page is never kept and its assets are: ${page.headers.get("cache-control")}, ${asset?.headers.get("cache-control")}`);
 
 const status = await (await fetch(`${base}api/status`, { headers })).json();
 check(Boolean(status.claude_code_version), `Claude Code in the app: ${status.claude_code_version}`);
