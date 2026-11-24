@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.1
+
 ### Fixed
 
 - After an update, the browser could keep showing the panel of the previous version, even after
