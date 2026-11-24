@@ -39,16 +39,27 @@ HA Claude Code Assist panel, in the Home Assistant sidebar (see
   to a message (see [Attachments](#attachments)).
 - **Memory** lists what the assistant remembers across sessions.
 - **Tools** holds the built-in tools, such as web search, and the MCP servers (see [Tools](#tools)).
-- **Sessions** lists every session, active or ended. Select one to see its settings and what
-  Claude Code reports about it (its own session ID, context, tokens used, cache, web searches)
-  in **Info**, and its messages in **Messages**. **End session** ends an active session. **Delete** removes a session
-  and all its messages for good, without touching long-term memory.
-- **Settings** holds the setup token, the model and the effort in **Claude Code**, the timeout
-  in **Sessions** and the long-term memory in **Memory**.
+- **Sessions** lists every session, active or ended, with where it started (**Chat panel** or
+  **Home Assistant**); a green dot marks an active session, a blue one a session that is
+  answering. Select one to see in **Info** its
+  settings, what Claude Code reports about it (its own session ID, context, tokens used, cache,
+  web searches) and, for a session from Home Assistant, what Home Assistant sent with each
+  message, which you can open to read in full. **Messages** shows its messages. **End session**
+  ends an active session. **Delete** removes a session and all its messages for good, without
+  touching long-term memory.
+- **Settings** holds the setup token, the model and the effort in **Claude Code**, the
+  assistant's prompts in **Agent** (see [Agent](#agent)), the timeout in **Sessions** and the
+  long-term memory in **Memory**.
+- In **Tools** and **Settings**, **Save** and **Discard** stay in the bar at the bottom. They
+  work when something changed, and in Settings they save or discard the changes of every tab
+  together. A dot on a tab marks the changes not saved yet.
+- **About** shows the versions of the app, of the integration and of Claude Code, and links to
+  this documentation, the changelog, the issues and the repository on GitHub.
 
 At the top, the panel shows whether the setup token is set, how many MCP servers are
 configured and how many sessions are active. The setup token turns red when it is missing,
-rejected or expired, and orange in the 30 days before it expires.
+rejected or expired, and orange in the 30 days before it expires. **Update needed** appears
+when the app and its integration are not the same version (see [Voice](#voice)).
 
 ## Sessions
 
@@ -57,10 +68,26 @@ rejected or expired, and orange in the 30 days before it expires.
 - After the timeout, the next message starts a new session. The assistant remembers nothing of
   the previous one, except what is in its long-term memory.
 - A session keeps the model, effort, web search and memory settings it started with. Changes
-  to these settings apply to new sessions.
+  to these settings, and to the prompts in **Agent**, apply to new sessions.
 - If the app restarts during a session, the session continues where it was.
 - Sessions with no messages for longer than **Days to keep sessions** (30 by default) are
   deleted, together with their messages. Long-term memory is not affected.
+
+## Agent
+
+The assistant follows a prompt, a text that says who it is and how it behaves. In **Settings** >
+**Agent** you can rewrite it.
+
+- There are two prompts: **Chat panel**, for the sessions started in the chat of the panel, and
+  **Home Assistant**, for those started through Home Assistant Assist, by voice or in the Assist
+  dialog. So you can, for example, ask for longer answers in the chat and shorter ones by voice.
+- Each prompt has five sections: **Identity**, **Personality**, **Capabilities**,
+  **Response style** and **Acting**. Each starts from a default text, and **Reset to default**
+  puts it back. A section left empty goes back to its default too.
+- Besides the prompt, the assistant always knows where the session comes from, its tools, its
+  long-term memory and how the app works, so you do not need to write them.
+- **Acting** says, by default, to ask for confirmation before deleting something or changing
+  configuration. If you remove that, the assistant does it without asking.
 
 ## Attachments
 
@@ -98,8 +125,18 @@ passes what you say to the app and its answer back.
 
 - Each voice assistant device has its own session, which ends after the same timeout as the
   chat. When you type in the Assist dialog, the session is your own, separate from the chat.
-  Voice sessions are listed in **Sessions** with the others.
-- The assistant uses the same settings, tools and memory as in the chat.
+  These sessions are listed in **Sessions** with the others, on the **Home Assistant** channel.
+- The assistant uses the same settings, tools and memory as in the chat, and the
+  **Home Assistant** prompt (see [Agent](#agent)). By default its answers there are written to
+  be heard: one or two short sentences, without links, lists or symbols.
+- An automation can ask a question through a voice assistant device with the action
+  **Assist satellite: Start conversation on satellite**. Its **Extra system prompt**, or its
+  **Message** when that is empty, reaches the assistant with your answer, so it knows what you
+  are answering. It is shown above your message in **Messages**.
+- The app and the integration come from the same release and must have the same version. When
+  they do not, the panel shows **Update needed** and **About** says which one to update; Assist
+  says it too when it cannot take a message. When the app is older, Home Assistant also shows
+  it in **Settings** > **Repairs**.
 - The answer reaches Assist while it is written, so speech can start before it is complete
   when your text-to-speech supports it.
 - If the app is stopped, Assist says that HA Claude Code Assist does not answer.
@@ -199,6 +236,7 @@ around 10,000 with a few exposed entities. Keep only the tools you need.
 | Settings > Claude Code | Setup token | The Claude subscription the assistant uses (see [Getting started](#getting-started)). When it expires or is revoked, the chat says that the token was rejected and the panel shows "Setup token rejected". Create a new one and paste it here. |
 | Settings > Claude Code | Model | Haiku is the fastest and uses the least of your subscription. Sonnet balances speed and capability. Opus is the most capable, but it is slower and uses the most. |
 | Settings > Claude Code | Effort | How much the assistant thinks before answering. Higher effort gives more careful answers, but they are slower and use more of your subscription. |
+| Settings > Agent | Chat panel, Home Assistant | The two prompts, each in five sections (see [Agent](#agent)). |
 | Settings > Sessions | Timeout in minutes | A session ends after this many minutes without messages. |
 | Settings > Sessions | Days to keep sessions | Sessions with no messages for longer than this are deleted, together with their messages. |
 | Settings > Memory | Long-term memory | Lets the assistant remember facts across sessions. |

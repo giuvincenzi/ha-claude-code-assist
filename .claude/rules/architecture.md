@@ -43,8 +43,14 @@ How the app and its core are organized.
   creates (`AssistToken`, in `/data`).
 - Assist goes through a thin integration in the same repository (`custom_components/`, installed
   from the Marketplace, or HACS before Home Assistant 2026.11, both reading `hacs.json`): an app
-  cannot be a conversation agent. It only relays sentences and answers; the sessions, the tools
-  and Claude Code stay in the core.
+  cannot be a conversation agent. It only relays what Home Assistant gives the agent
+  (`ConversationInput.as_dict()`, untouched) and the answers; the sessions, the tools and Claude
+  Code stay in the core.
+- App and integration are updated apart, so each request carries the integration's version and
+  each answer the app's (`versions.py`, the integration's `const.py`). They are compared as
+  release numbers: when they differ, the panel says which to update, the core's refusal of a
+  request it cannot read says it to Assist, and the integration raises a Repairs issue when the
+  app is older.
 - The integration learns the address and the token from Supervisor discovery (`config.yaml`
   `discovery`), which the core announces at every start: a new token reaches it by itself. There
   is no setup or new token by hand (`config_flow.py`): the token is shown nowhere.

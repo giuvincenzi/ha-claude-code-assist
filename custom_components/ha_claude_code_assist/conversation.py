@@ -16,7 +16,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ClaudeCodeAssistConfigEntry
-from .api import CannotConnect, InvalidToken
+from .api import AppRefused, CannotConnect, InvalidToken
 from .const import DOMAIN
 
 
@@ -81,13 +81,16 @@ class ClaudeCodeAssistAgent(conversation.ConversationEntity, conversation.Abstra
                 "HA Claude Code Assist refused the token. Restart the app so Home Assistant gets the new one.") from err
         except CannotConnect as err:
             raise HomeAssistantError("HA Claude Code Assist does not answer. Check that the app is running.") from err
+        except AppRefused as err:
+            raise HomeAssistantError(str(err)) from err
         return conversation.async_get_result_from_chat_log(user_input, chat_log)
 
     async def _answer(self, user_input: conversation.ConversationInput, conversation_id: str, key: str,
                       name: str | None) -> AsyncIterator[conversation.AssistantContentDeltaDict]:
         yield {"role": "assistant"}
-        async for item in self.entry.runtime_data.converse(user_input.text, conversation_id, key, name,
-                                                           user_input.language):
+        # Everything Home Assistant gave the agent, as Home Assistant turns it into JSON: the app
+        # keeps it for its panel and passes its extra_system_prompt to Claude.
+        async for item in self.entry.runtime_data.converse(user_input.as_dict(), conversation_id, key, name):
             if "delta" in item:
                 yield {"content": item["delta"]}
             elif item.get("done") and item.get("text"):

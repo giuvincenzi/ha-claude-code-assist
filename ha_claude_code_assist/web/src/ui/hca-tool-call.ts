@@ -1,14 +1,14 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import "./hca-collapsible";
+import "./hca-detail";
 import "./hca-icon";
 import "./hca-spinner";
 import { base } from "./styles";
 
 /**
- * One tool the assistant used: its name and state on one small grey line, so it does not read as
- * part of the answer; the details open below.
+ * One tool the assistant used: its name and state on a detail line, so it does not read as part
+ * of the answer; what it sent and received opens below.
  */
 @customElement("hca-tool-call")
 export class HcaToolCall extends LitElement {
@@ -17,22 +17,6 @@ export class HcaToolCall extends LitElement {
     css`
       :host {
         display: block;
-        margin: var(--hca-space-1) 0;
-        font-size: var(--hca-text-xs);
-        color: var(--hca-text-muted);
-        --hca-icon-size: 12px;
-      }
-      /* The collapsible sets its own text colour: the line stays grey, darker on hover. */
-      hca-collapsible {
-        color: inherit;
-      }
-      .summary:hover {
-        color: var(--hca-text);
-      }
-      .summary {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--hca-space-2);
       }
       .ok {
         color: var(--hca-ok);
@@ -48,16 +32,11 @@ export class HcaToolCall extends LitElement {
 
   render() {
     const state = {
-      running: html`<hca-spinner></hca-spinner>`,
-      ok: html`<hca-icon class="ok" name="check"></hca-icon>`,
-      failed: html`<hca-icon class="failed" name="alert"></hca-icon>`,
+      running: html`<hca-spinner slot="end"></hca-spinner>`,
+      ok: html`<hca-icon slot="end" class="ok" name="check"></hca-icon>`,
+      failed: html`<hca-icon slot="end" class="failed" name="alert"></hca-icon>`,
     }[this.status];
-    return html`
-      <hca-collapsible>
-        <span slot="summary" class="summary"><hca-icon name="tool"></hca-icon>${this.label}${state}</span>
-        <slot></slot>
-      </hca-collapsible>
-    `;
+    return html`<hca-detail icon="tool" label=${this.label}>${state}<slot></slot></hca-detail>`;
   }
 }
 

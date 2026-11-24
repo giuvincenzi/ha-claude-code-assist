@@ -236,7 +236,7 @@ export class HcaChatView extends LitElement {
       if (event.session_id === this.session?.session_id) this.startOver();
       return;
     }
-    if (event.type === "memory_changed") return;
+    if (event.type === "memory_changed" || event.type === "status_changed") return;
     if (event.session_id !== this.session?.session_id) return;
     if (event.type === "turn_event") this.items = applyClaudeEvent(this.items, event.event);
     if (event.type === "turn_finished") {

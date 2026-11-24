@@ -51,7 +51,7 @@ def test_the_history_shows_attached_files_instead_of_their_lines(tmp_path):
     text = f"which plant is this — a fern?\\n\\n[Attached file: {workdir}/attachments/plant.jpg]\\n[Attached file: {workdir}/attachments/bill.pdf]"
     touch(transcripts.path(workdir, CLAUDES),
           '{"type": "user", "timestamp": "t", "message": {"role": "user", "content": "' + text + '"}}\n')
-    (item,) = transcripts.messages(workdir, CLAUDES)
+    (item,) = transcripts.messages(workdir, CLAUDES, home_assistant=False)
     assert item["text"] == "which plant is this — a fern?"
     assert item["attachments"] == [{"name": "plant.jpg", "image": True}, {"name": "bill.pdf", "image": False}]
 

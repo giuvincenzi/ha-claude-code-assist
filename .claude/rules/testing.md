@@ -24,9 +24,10 @@ Which tests exist and when they run.
 - `make app-smoke`: end to end through Ingress, as the browser does: login, panel, WebSocket,
   settings saved through the Supervisor, a real chat with Claude, memory, resume after an app
   restart, transcripts, Read refusing another session's files and the app's own, an image from
-  the web opened, attachments, a rejected token, and Assist through the voice assistant
-  (`assist_pipeline/run`, as the Assist dialog) and the integration set up from discovery. Run
-  after every change to the app, with the test environment up.
+  the web opened, attachments, a rejected token, a prompt section saved, and Assist through the
+  voice assistant (`assist_pipeline/run`, as the Assist dialog), what Home Assistant sent kept
+  with each message, the versions of the app and the integration, and the integration set up
+  from discovery. Run after every change to the app, with the test environment up.
 - `make app-behave`: real conversations from `scripts/app-behave.json`, reported with answers,
   tools, model turns and times. It checks nothing by itself: it is read before and after a change
   to the prompt or to a tool. It changes settings and memory of the test environment and restores

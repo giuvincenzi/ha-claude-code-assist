@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 from ha_cca import attachments
 from ha_cca.config import parse_options
 from ha_cca.panel import Panel
+from ha_cca.prompt import DEFAULTS, SECTIONS
 from ha_cca.sessions import ClaudeSession, SessionRecord, SessionSettings
 from ha_cca.transcripts import Transcripts
 
@@ -30,11 +32,11 @@ class FakeSettings:
 class FakeSessions:
     token_rejected_at = None
 
-    def __init__(self, claude_id=None, root=Path("/data/sessions"), read_files=True, title=""):
+    def __init__(self, claude_id=None, root=Path("/data/sessions"), read_files=True, title="", channel="panel"):
         self.root = root
         self.runs = []
         self.record = SessionRecord(
-            session_id=OURS, title=title, source={"channel": "panel", "key": "u"}, conversation_ids=["c"],
+            session_id=OURS, title=title, source={"channel": channel, "key": "u"}, conversation_ids=["c"],
             created_at="2026-01-01T00:00:00+00:00", last_activity="2026-01-01T00:00:00+00:00", closed_at=None,
             settings=SessionSettings("haiku", "low", False, True, read_files), claude=ClaudeSession(session_id=claude_id))
 
@@ -54,6 +56,10 @@ class FakeSessions:
 
     def workdir(self, session_id):
         return self.root / session_id / "workdir"
+
+    def home_assistant_inputs(self, session_id):
+        self.get(session_id)
+        return [{"received_at": "2026-01-01T00:00:00+00:00", "input": {"text": "hi", "language": "it"}}]
 
     async def delete(self, session_id):
         self.get(session_id)
@@ -100,6 +106,14 @@ async def test_every_open_panel_hears_of_a_settings_change_once_it_is_applied():
     assert sent[1]["success"] is True and sent[1]["result"]["values"]["model"] == "opus"
 
 
+async def test_an_event_reaches_every_open_panel():
+    panel = make_panel([])
+    first, second = asyncio.Queue(), asyncio.Queue()
+    panel._outboxes.update({first, second})
+    panel.notify({"type": "status_changed"})
+    assert drain(first) == drain(second) == [{"type": "event", "event": {"type": "status_changed"}}]
+
+
 async def test_a_refused_change_tells_nobody():
     applied = []
     panel = make_panel(applied)
@@ -135,9 +149,42 @@ async def test_history_reads_claudes_transcript_from_the_sessions_project_folder
     assert [item["text"] for item in answer["result"]] == ["hello"]
 
 
+@pytest.mark.parametrize("channel, text, context", [
+    ("home_assistant", "yes", "Asked about the garage."),
+    ("panel", "<home_assistant_context>\nAsked about the garage.\n</home_assistant_context>\n\nyes", None),
+])
+async def test_only_a_home_assistant_session_shows_the_context_apart(tmp_path, channel, text, context):
+    transcripts = Transcripts(tmp_path)
+    path = transcripts.path(Path(f"/data/sessions/{OURS}/workdir"), CLAUDES)
+    path.parent.mkdir(parents=True)
+    message = "<home_assistant_context>\nAsked about the garage.\n</home_assistant_context>\n\nyes"
+    path.write_text(json.dumps({"type": "user", "timestamp": "t", "message": {"role": "user", "content": message}}) + "\n")
+    panel = make_panel([], FakeSessions(claude_id=CLAUDES, channel=channel), transcripts)
+    (item,) = (await ask(panel, {"type": "sessions/history", "session_id": OURS}))["result"]
+    assert item["text"] == text and item.get("context") == context
+
+
+async def test_what_home_assistant_sent_with_each_message(tmp_path):
+    panel = make_panel([], FakeSessions(channel="home_assistant"), Transcripts(tmp_path))
+    answer = await ask(panel, {"type": "sessions/home_assistant", "session_id": OURS})
+    assert answer["result"] == [{"received_at": "2026-01-01T00:00:00+00:00", "input": {"text": "hi", "language": "it"}}]
+
+
+async def test_the_settings_show_every_section_of_every_prompt():
+    panel = make_panel([])
+    await ask(panel, {"type": "settings/update", "changes": {"prompt_home_assistant_identity": "You are Jarvis."}})
+    view = (await ask(panel, {"type": "settings/get"}))["result"]
+    assert list(view["prompts"]) == ["panel", "home_assistant"]
+    assert list(view["prompts"]["panel"]) == list(SECTIONS)
+    assert view["prompts"]["home_assistant"]["identity"] == {
+        "option": "prompt_home_assistant_identity", "text": "You are Jarvis.", "default": DEFAULTS["home_assistant"]["identity"]}
+    assert view["prompts"]["panel"]["identity"]["text"] == DEFAULTS["panel"]["identity"]
+    assert not any(key.startswith("prompt_") for key in view["values"])
+
+
 async def test_unknown_session_is_reported_plainly(tmp_path):
     panel = make_panel([], FakeSessions(), Transcripts(tmp_path))
-    for command in ("sessions/history", "sessions/delete"):
+    for command in ("sessions/history", "sessions/home_assistant", "sessions/delete"):
         answer = await ask(panel, {"type": command, "session_id": "2f6af861-eb56-4f75-ba62-6e7cd820517c"})
         assert answer["success"] is False and answer["error"] == "This session no longer exists."
 

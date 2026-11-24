@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from ha_cca import access
 from ha_cca.assist import AssistToken, assist_router, stream_turn, text_delta
 from ha_cca.sessions import TurnError, TurnResult
+from ha_cca.versions import IntegrationVersion
 
 OURS = "8f14e45f-ceea-467a-9575-1f0a2f8a1c11"
 
@@ -37,6 +38,7 @@ class FakeSessions:
     result: TurnResult | None = None
     error: TurnError | None = None
     resolved: list[tuple] = field(default_factory=list)
+    runs: list[dict] = field(default_factory=list)
     listeners: list = field(default_factory=list)
 
     async def resolve(self, channel, key, conversation_id, name=None):
@@ -47,7 +49,8 @@ class FakeSessions:
         self.listeners.append(listener)
         return lambda: self.listeners.remove(listener)
 
-    async def run(self, record, message):
+    async def run(self, record, message, title=None, home_assistant_input=None):
+        self.runs.append({"message": message, "title": title, "home_assistant_input": home_assistant_input})
         for event in self.events:
             for listener in list(self.listeners):
                 listener(event)
@@ -56,8 +59,15 @@ class FakeSessions:
         return self.result
 
 
-async def collect(sessions, text_="hello", conversation_id="ha-1", key="satellite.kitchen", name="Kitchen"):
-    return [item async for item in stream_turn(sessions, text_, conversation_id, key, name)]
+def ha_input(text_="hello", extra_system_prompt=None):
+    """What Home Assistant gives the agent, as `ConversationInput.as_dict()` makes it."""
+    return {"text": text_, "context": {"id": "01K", "parent_id": None, "user_id": None}, "conversation_id": None,
+            "device_id": None, "satellite_id": "assist_satellite.kitchen", "language": "en",
+            "agent_id": "conversation.ha_claude_code_assist", "extra_system_prompt": extra_system_prompt}
+
+
+async def collect(sessions, given=None, conversation_id="ha-1", key="satellite.kitchen", name="Kitchen"):
+    return [item async for item in stream_turn(sessions, conversation_id, key, name, given or ha_input())]
 
 
 # --- who reaches what -----------------------------------------------------------
@@ -115,7 +125,7 @@ async def test_the_answer_streams_and_ends():
     ], result=TurnResult(OURS, "The kitchen light is on.", False))
     items = await collect(sessions)
     assert items == [{"delta": "The kitchen "}, {"delta": "light is on."}, {"done": True, "error": None, "text": ""}]
-    assert sessions.resolved == [("voice", "satellite.kitchen", "ha-1", "Kitchen")]
+    assert sessions.resolved == [("home_assistant", "satellite.kitchen", "ha-1", "Kitchen")]
     assert sessions.listeners == []  # stops listening
 
 
@@ -166,6 +176,26 @@ async def test_a_message_moved_to_a_new_session_still_gets_its_answer():
     assert await collect(sessions) == [{"done": True, "error": None, "text": "Hello!"}]
 
 
+async def test_what_home_assistant_sent_goes_with_the_message():
+    sessions = FakeSessions(events=[
+        {"type": "turn_finished", "session_id": OURS, "is_error": False, "error": None, "text": "Done."},
+    ])
+    given = ha_input("  close it  ")
+    await collect(sessions, given)
+    assert sessions.runs == [{"message": "close it", "title": "close it", "home_assistant_input": given}]
+
+
+async def test_the_context_home_assistant_sends_reaches_claude_before_the_message():
+    sessions = FakeSessions(events=[
+        {"type": "turn_finished", "session_id": OURS, "is_error": False, "error": None, "text": "Closed."},
+    ])
+    await collect(sessions, ha_input("yes", "The user was asked whether to close cover.garage_door."))
+    (run,) = sessions.runs
+    assert run["message"] == ("<home_assistant_context>\nThe user was asked whether to close cover.garage_door.\n"
+                              "</home_assistant_context>\n\nyes")
+    assert run["title"] == "yes"  # the session is named after what the user said
+
+
 def test_text_delta_reads_only_the_assistants_text():
     assert text_delta(text("hi")) == ("hi", False)
     assert text_delta(text_block()) == (None, True)
@@ -176,44 +206,98 @@ def test_text_delta_reads_only_the_assistants_text():
 # --- the routes ---------------------------------------------------------------------
 
 
+@dataclass
+class Versions:
+    app: str | None = "0.3.0"
+    changes: int = 0
+
+
 @pytest.fixture
 def client(tmp_path):
     token = AssistToken(tmp_path / "assist_token")
     sessions = FakeSessions(events=[
         text("Hi"), {"type": "turn_finished", "session_id": OURS, "is_error": False, "error": None, "text": "Hi"},
     ])
+    versions = Versions()
+    integration = IntegrationVersion(tmp_path / "integration.json")
+
+    def changed():
+        versions.changes += 1
+
     app = FastAPI()
-    app.include_router(assist_router(sessions, token))
-    return TestClient(app), token, sessions
+    app.include_router(assist_router(sessions, token, lambda: versions.app, integration, changed))
+    return TestClient(app), token, sessions, versions, integration
+
+
+def headers(token, version="0.3.0"):
+    return {"Authorization": f"Bearer {token.value}", **({"X-HA-CCA-Integration-Version": version} if version else {})}
+
+
+def body(text_="hello"):
+    return {"conversation_id": "ha-1", "source": {"key": "satellite.kitchen", "name": "Kitchen"}, "input": ha_input(text_)}
 
 
 def test_check_with_the_token(client):
-    http, token, _ = client
-    assert http.get("/api/assist/check", headers={"Authorization": f"Bearer {token.value}"}).json() == {"ok": True}
+    http, token, *_ = client
+    response = http.get("/api/assist/check", headers=headers(token))
+    assert response.json() == {"ok": True}
+    assert response.headers["X-HA-CCA-App-Version"] == "0.3.0"
 
 
-@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer wrong"}])
-def test_nothing_without_the_token(client, headers):
-    http, _, sessions = client
-    assert http.get("/api/assist/check", headers=headers).status_code == 401
-    response = http.post("/api/assist", headers=headers, json={"text": "hi", "source": {"key": "k"}})
+@pytest.mark.parametrize("given", [{}, {"Authorization": "Bearer wrong"}])
+def test_nothing_without_the_token(client, given):
+    http, _, sessions, versions, integration = client
+    assert http.get("/api/assist/check", headers=given).status_code == 401
+    response = http.post("/api/assist", headers=given, json=body())
     assert response.status_code == 401
     assert response.json() == {"error": "The token of HA Claude Code Assist is not valid."}
     assert sessions.resolved == []
+    assert not integration.known and versions.changes == 0  # a request without the token tells nothing
 
 
 def test_a_message_streams_as_lines_of_json(client):
-    http, token, sessions = client
-    response = http.post("/api/assist", headers={"Authorization": f"Bearer {token.value}"},
-                         json={"text": "hello", "conversation_id": "ha-1", "source": {"key": "satellite.kitchen", "name": "Kitchen"}})
+    http, token, sessions, *_ = client
+    response = http.post("/api/assist", headers=headers(token), json=body())
     assert response.headers["content-type"] == "application/x-ndjson"
+    assert response.headers["X-HA-CCA-App-Version"] == "0.3.0"
     assert [json.loads(line) for line in response.text.splitlines()] == [
         {"delta": "Hi"}, {"done": True, "error": None, "text": ""}]
-    assert sessions.resolved == [("voice", "satellite.kitchen", "ha-1", "Kitchen")]
+    assert sessions.resolved == [("home_assistant", "satellite.kitchen", "ha-1", "Kitchen")]
+    assert sessions.runs[0]["home_assistant_input"] == ha_input()
 
 
-@pytest.mark.parametrize("body", [{"text": "", "source": {"key": "k"}}, {"text": "hi"}, {"text": "hi", "source": {}}])
-def test_a_message_needs_its_text_and_source(client, body):
-    http, token, _ = client
-    response = http.post("/api/assist", headers={"Authorization": f"Bearer {token.value}"}, json=body)
+@pytest.mark.parametrize("given", [
+    {"source": {"key": "k"}, "input": {"text": "  "}},
+    {"source": {"key": "k"}},
+    {"input": {"text": "hi"}},
+    {"source": {}, "input": {"text": "hi"}},
+])
+def test_a_message_needs_its_text_and_source(client, given):
+    http, token, sessions, *_ = client
+    response = http.post("/api/assist", headers=headers(token), json=given)
     assert response.status_code == 400
+    assert response.json() == {"error": "A message needs its text and its source."}
+    assert sessions.resolved == []
+
+
+def test_the_integrations_version_is_recorded_when_it_changes(client, tmp_path):
+    http, token, _, versions, integration = client
+    http.get("/api/assist/check", headers=headers(token, "0.3.0"))
+    http.post("/api/assist", headers=headers(token, "0.3.0"), json=body())
+    assert (integration.known, integration.version, versions.changes) == (True, "0.3.0", 1)
+    assert IntegrationVersion(tmp_path / "integration.json").version == "0.3.0"  # kept after a restart
+    http.get("/api/assist/check", headers=headers(token, "0.4.0"))
+    assert (integration.version, versions.changes) == ("0.4.0", 2)
+
+
+def test_an_older_integration_is_told_to_update(client):
+    # Before 0.3.0 the integration sent its message another way, and no version.
+    http, token, sessions, _, integration = client
+    response = http.post("/api/assist", headers=headers(token, None),
+                         json={"text": "hi", "conversation_id": "ha-1", "language": "en", "source": {"key": "k"}})
+    assert response.status_code == 400
+    assert response.json() == {"error": (
+        "The HA Claude Code Assist integration is older than the app, version 0.3.0. "
+        "Update the integration in the Marketplace or HACS, then restart Home Assistant.")}
+    assert (integration.known, integration.version) == (True, None)
+    assert sessions.resolved == []

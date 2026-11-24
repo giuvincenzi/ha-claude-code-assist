@@ -1,24 +1,74 @@
 from datetime import timedelta
 
+import pytest
+
 from ha_cca.app_info import AppInfoContext, render_app_info
 from ha_cca.config import parse_options
-from ha_cca.prompt import build_system_prompt
+from ha_cca.prompt import CONTEXT_TAG, DEFAULTS, SECTIONS, build_system_prompt, split_context, with_context
 from ha_cca.sessions import ClaudeSession, SessionRecord, SessionSettings
 
 
+def prompt(channel="panel", memory=None, **sections):
+    return build_system_prompt(channel, {**DEFAULTS[channel], **sections}, memory)
+
+
 def test_prompt_with_memory():
-    prompt = build_system_prompt("panel", "- [1] The study is Office")
-    assert "This conversation comes from: the chat in the HA Claude Code Assist panel." in prompt
-    assert "<memory>" in prompt and "- [1] The study is Office" in prompt
+    text = prompt(memory="- [1] The study is Office")
+    assert "This conversation comes from: the chat in the HA Claude Code Assist panel." in text
+    assert "<memory>" in text and "- [1] The study is Office" in text
 
 
 def test_prompt_without_memory():
-    prompt = build_system_prompt("panel", None)
-    assert "<memory" not in prompt and "ha_cca_memory_add" not in prompt
+    text = prompt()
+    assert "<memory" not in text and "ha_cca_memory_add" not in text
 
 
 def test_prompt_is_stable():
-    assert build_system_prompt("panel", "(no entries)") == build_system_prompt("panel", "(no entries)")
+    assert prompt(memory="(no entries)") == prompt(memory="(no entries)")
+
+
+def test_prompt_is_made_of_the_sections_in_order_with_the_system_rules():
+    text = prompt(identity="You are Jarvis.", acting="- Act.", memory="(no entries)")
+    tags = ["identity", "personality", "capabilities", "system", "conversation", "response_style", "acting",
+            "memory", "memory_entries"]
+    assert [text.index(f"<{tag}>") for tag in tags] == sorted(text.index(f"<{tag}>") for tag in tags)
+    assert "<identity>\nYou are Jarvis.\n</identity>" in text and "<acting>\n- Act.\n</acting>" in text
+    assert "call ha_cca_app_info" in text and "Read the real state with your tools" in text
+
+
+def test_each_channel_has_its_own_response_style_and_conversation():
+    panel, home_assistant = prompt("panel"), prompt("home_assistant")
+    assert "The panel renders markdown" in panel and "text-to-speech" not in panel
+    assert "text-to-speech" in home_assistant and "The panel renders markdown" not in home_assistant
+    assert "This conversation comes from: Home Assistant's Assist" in home_assistant
+
+
+def test_only_home_assistant_is_told_about_its_context():
+    assert f"<{CONTEXT_TAG}>" in prompt("home_assistant")
+    assert CONTEXT_TAG not in prompt("panel")
+
+
+def test_the_system_rules_are_not_in_the_sections_the_user_rewrites():
+    for sections in DEFAULTS.values():
+        assert sections.keys() == set(SECTIONS)
+        assert not any("ha_cca_app_info" in text or "Read the real state" in text for text in sections.values())
+
+
+def test_a_message_with_context_and_back():
+    message = with_context("yes", "  The user was asked whether to close the garage.\n")
+    assert message == (f"<{CONTEXT_TAG}>\nThe user was asked whether to close the garage.\n</{CONTEXT_TAG}>\n\nyes")
+    assert split_context(message) == ("yes", "The user was asked whether to close the garage.")
+
+
+@pytest.mark.parametrize("context", [None, "", "  \n"])
+def test_a_message_without_context_is_the_text(context):
+    assert with_context("hello", context) == "hello"
+    assert split_context("hello") == ("hello", None)
+
+
+def test_only_a_context_at_the_start_counts():
+    text = f"what does <{CONTEXT_TAG}>\nx\n</{CONTEXT_TAG}>\n\nmean?"
+    assert split_context(text) == (text, None)
 
 
 def test_app_info_is_the_docs_plus_current_state():

@@ -59,3 +59,65 @@ configuration:
   memory_max_entry_length:
     name: Maximum memory entry length
     description: The longest a single memory entry can be, in characters.
+  prompt_panel_identity:
+    name: Chat panel prompt, identity
+    description: >-
+      Who the assistant is, in the sessions started in the chat of the HA Claude Code
+      Assist panel. Leave it empty to use the default text. It is easier to edit in
+      Settings > Agent of the HA Claude Code Assist panel.
+  prompt_panel_personality:
+    name: Chat panel prompt, personality
+    description: >-
+      The assistant's character and tone, in the sessions started in the chat of the HA
+      Claude Code Assist panel. Leave it empty to use the default text. It is easier to
+      edit in Settings > Agent of the HA Claude Code Assist panel.
+  prompt_panel_capabilities:
+    name: Chat panel prompt, capabilities
+    description: >-
+      What the assistant does with its own knowledge and its tools, in the sessions
+      started in the chat of the HA Claude Code Assist panel. Leave it empty to use the
+      default text. It is easier to edit in Settings > Agent of the HA Claude Code
+      Assist panel.
+  prompt_panel_response_style:
+    name: Chat panel prompt, response style
+    description: >-
+      How the assistant writes its answers, in the sessions started in the chat of the
+      HA Claude Code Assist panel. Leave it empty to use the default text. It is easier
+      to edit in Settings > Agent of the HA Claude Code Assist panel.
+  prompt_panel_acting:
+    name: Chat panel prompt, acting
+    description: >-
+      How the assistant acts on requests and when it asks for confirmation, in the
+      sessions started in the chat of the HA Claude Code Assist panel. Leave it empty to
+      use the default text. It is easier to edit in Settings > Agent of the HA Claude
+      Code Assist panel.
+  prompt_home_assistant_identity:
+    name: Home Assistant prompt, identity
+    description: >-
+      Who the assistant is, in the sessions started through Home Assistant Assist. Leave
+      it empty to use the default text. It is easier to edit in Settings > Agent of the
+      HA Claude Code Assist panel.
+  prompt_home_assistant_personality:
+    name: Home Assistant prompt, personality
+    description: >-
+      The assistant's character and tone, in the sessions started through Home Assistant
+      Assist. Leave it empty to use the default text. It is easier to edit in Settings >
+      Agent of the HA Claude Code Assist panel.
+  prompt_home_assistant_capabilities:
+    name: Home Assistant prompt, capabilities
+    description: >-
+      What the assistant does with its own knowledge and its tools, in the sessions
+      started through Home Assistant Assist. Leave it empty to use the default text. It
+      is easier to edit in Settings > Agent of the HA Claude Code Assist panel.
+  prompt_home_assistant_response_style:
+    name: Home Assistant prompt, response style
+    description: >-
+      How the assistant writes its answers, in the sessions started through Home
+      Assistant Assist. Leave it empty to use the default text. It is easier to edit in
+      Settings > Agent of the HA Claude Code Assist panel.
+  prompt_home_assistant_acting:
+    name: Home Assistant prompt, acting
+    description: >-
+      How the assistant acts on requests and when it asks for confirmation, in the
+      sessions started through Home Assistant Assist. Leave it empty to use the default
+      text. It is easier to edit in Settings > Agent of the HA Claude Code Assist panel.

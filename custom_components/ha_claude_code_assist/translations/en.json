@@ -14,5 +14,11 @@
       "already_configured": "HA Claude Code Assist is already set up.",
       "discovery_only": "Home Assistant finds HA Claude Code Assist by itself while the app is running. Start the app, then add it from Discovered in Settings > Devices & services."
     }
+  },
+  "issues": {
+    "app_outdated": {
+      "title": "The HA Claude Code Assist app is out of date",
+      "description": "The HA Claude Code Assist app is older than its integration, so Assist cannot use it. Update the app in Settings > Apps. This message goes away by itself once the app is updated."
+    }
   }
 }

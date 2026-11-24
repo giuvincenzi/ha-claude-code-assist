@@ -9,6 +9,8 @@ export interface Tab {
   id: string;
   label: string;
   icon?: IconName;
+  /** Marks the tab with a dot; the text says why (its tooltip, and read with its name). */
+  mark?: string;
 }
 
 /**
@@ -49,6 +51,12 @@ export class HcaTabs extends LitElement {
         background: var(--hca-accent-soft);
         color: var(--hca-accent);
       }
+      .mark {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--hca-accent);
+      }
       /* Narrow screens: icons only; the name stays as tooltip and accessible name. */
       @media (max-width: 600px) {
         [role="tablist"] {
@@ -84,10 +92,13 @@ export class HcaTabs extends LitElement {
     return html`
       <div role="tablist" aria-label=${this.label} @keydown=${this.onKeydown}>
         ${this.tabs.map((tab) => html`
-          <button role="tab" data-id=${tab.id} class=${tab.icon ? "has-icon" : ""} title=${tab.label}
-            aria-label=${tab.label} aria-selected=${tab.id === this.selected ? "true" : "false"}
+          <button role="tab" data-id=${tab.id} class=${tab.icon ? "has-icon" : ""}
+            title=${tab.mark ? `${tab.label}. ${tab.mark}` : tab.label}
+            aria-label=${tab.mark ? `${tab.label}. ${tab.mark}` : tab.label}
+            aria-selected=${tab.id === this.selected ? "true" : "false"}
             tabindex=${tab.id === this.selected ? 0 : -1} @click=${() => this.select(tab.id, false)}>
             ${tab.icon ? html`<hca-icon name=${tab.icon}></hca-icon>` : ""}<span class="label">${tab.label}</span>
+            ${tab.mark ? html`<span class="mark"></span>` : ""}
           </button>
         `)}
       </div>

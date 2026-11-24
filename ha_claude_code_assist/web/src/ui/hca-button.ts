@@ -6,7 +6,10 @@ import type { IconName } from "./hca-icon";
 import "./hca-spinner";
 import { base } from "./styles";
 
-/** A button: primary for the main action of a page, secondary, ghost, or danger. */
+/**
+ * A button: primary for the main action of a page, secondary, ghost, or danger. With `href` it is
+ * a link that looks the same and opens in a new tab.
+ */
 @customElement("hca-button")
 export class HcaButton extends LitElement {
   static styles = [
@@ -15,7 +18,8 @@ export class HcaButton extends LitElement {
       :host {
         display: inline-flex;
       }
-      button {
+      button,
+      a {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -29,6 +33,7 @@ export class HcaButton extends LitElement {
         border-radius: var(--hca-radius-sm);
         border: 1px solid transparent;
         cursor: pointer;
+        text-decoration: none;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
         --hca-icon-size: 16px;
       }
@@ -41,7 +46,8 @@ export class HcaButton extends LitElement {
         opacity: 0.55;
         cursor: not-allowed;
       }
-      :host([size="sm"]) button {
+      :host([size="sm"]) button,
+      :host([size="sm"]) a {
         min-height: 30px;
         padding: 0 var(--hca-space-3);
         font-size: var(--hca-text-sm);
@@ -85,18 +91,20 @@ export class HcaButton extends LitElement {
   @property() icon?: IconName;
   @property({ type: Boolean }) disabled = false;
   @property({ type: Boolean }) loading = false;
+  @property() href?: string;
 
   render() {
-    return html`
-      <button class=${this.variant} ?disabled=${this.disabled || this.loading}>
-        ${this.loading
-          ? html`<hca-spinner></hca-spinner>`
-          : this.icon
-            ? html`<hca-icon name=${this.icon}></hca-icon>`
-            : nothing}
-        <span class="label"><slot></slot></span>
-      </button>
+    const content = html`
+      ${this.loading
+        ? html`<hca-spinner></hca-spinner>`
+        : this.icon
+          ? html`<hca-icon name=${this.icon}></hca-icon>`
+          : nothing}
+      <span class="label"><slot></slot></span>
     `;
+    return this.href
+      ? html`<a class=${this.variant} href=${this.href} target="_blank" rel="noopener noreferrer">${content}</a>`
+      : html`<button class=${this.variant} ?disabled=${this.disabled || this.loading}>${content}</button>`;
   }
 }
 

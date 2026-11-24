@@ -22,6 +22,9 @@ How the panel (`web/`) is built and must look.
 - `src/theme.css` holds the design tokens (`--hca-*`: colours with their dark variant, spacing,
   radii, type); components use only these variables, never literal colours or sizes.
 - Pages sit in `hca-page`, centred with a maximum width (narrow for the chat).
+- A page that saves settings sits in `hca-form-layout`: Save and Discard in its bar at the bottom,
+  enabled only when something changed, and what happened (saved, an error) said there, where the
+  user clicked, never at the top of a page that may be scrolled.
 - Ingress serves the panel under a path of its own: only relative URLs (`base: "./"`,
   `new URL("ws", location.href)`).
 - Home Assistant is often opened over plain HTTP: no API that needs a secure context

@@ -15,6 +15,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
+from . import async_integration_version
 from .api import AppClient, CannotConnect, InvalidToken
 from .const import DOMAIN
 
@@ -40,7 +41,8 @@ class ClaudeCodeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             data = self._discovered
-            client = AppClient(async_get_clientsession(self.hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
+            client = AppClient(async_get_clientsession(self.hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN],
+                               await async_integration_version(self.hass))
             try:
                 await client.check()
             except InvalidToken:

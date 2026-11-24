@@ -56,6 +56,7 @@ def build_launch_spec(
       only the session's working directory and the files Claude Code keeps for the session,
       as Claude Code itself allows (see architecture.md).
     """
+    channel = record.source["channel"]
     internal: dict[str, Any] = {
         "type": "http",
         "url": internal_mcp_url,
@@ -75,7 +76,7 @@ def build_launch_spec(
         model=record.settings.model,
         effort=record.settings.effort,
         system_prompt=build_system_prompt(
-            record.source["channel"], memory_text if record.settings.memory_enabled else None),
+            channel, settings.prompts[channel], memory_text if record.settings.memory_enabled else None),
         mcp_config={"mcpServers": servers},
         builtin_tools=builtin,
         allowed_tools=[f"mcp__{name}" for name in servers] + [t for t in builtin if t != READ_TOOL],

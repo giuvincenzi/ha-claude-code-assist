@@ -1,10 +1,11 @@
 import { LitElement, css, html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 
 import { base } from "./styles";
 
 /**
- * One row of a list: a heading, a grey line under it, and something on the right (slot "end").
+ * One row of a list: a heading, a grey line under it, something before the heading, level with
+ * its first line (slot "start", such as a status dot), and something on the right (slot "end").
  *
  * A `selectable` row is one button, end slot included: hover and selection cover the whole row,
  * and it fires `hca-select`. Its end slot must hold nothing interactive (a badge, not a button).
@@ -57,6 +58,16 @@ export class HcaListRow extends LitElement {
         flex: 1;
         min-width: 0;
       }
+      .start {
+        display: flex;
+        align-self: flex-start;
+        /* Centred on the heading's first line (line height 1.4). */
+        height: 1.4em;
+        align-items: center;
+      }
+      .start[hidden] {
+        display: none;
+      }
       .heading {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -93,9 +104,14 @@ export class HcaListRow extends LitElement {
   @property({ type: Boolean, reflect: true }) selectable = false;
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) wrap = false;
+  @state() private hasStart = false;
 
   render() {
     const content = html`
+      <div class="start" ?hidden=${!this.hasStart}>
+        <slot name="start" @slotchange=${(e: Event) =>
+          (this.hasStart = (e.target as HTMLSlotElement).assignedElements().length > 0)}></slot>
+      </div>
       <div class="text">
         <div class="heading">${this.heading}<slot name="heading"></slot></div>
         ${this.detail ? html`<div class="detail">${this.detail}</div>` : nothing}

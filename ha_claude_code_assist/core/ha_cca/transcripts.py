@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .attachments import IMAGE_TYPES, split_attachments
+from .prompt import split_context
 
 PREVIEW_LENGTH = 2000
 
@@ -44,8 +45,9 @@ class Transcripts:
         shutil.rmtree(folder)
         return [folder]
 
-    def messages(self, workdir: Path, claude_session_id: str) -> list[dict[str, Any]]:
-        """Conversation items: user text, assistant text, and tool calls with their results."""
+    def messages(self, workdir: Path, claude_session_id: str, home_assistant: bool) -> list[dict[str, Any]]:
+        """Conversation items: user text, assistant text, and tool calls with their results.
+        In a Home Assistant session, a user message can carry the context Home Assistant sent."""
         try:
             lines = self.path(workdir, claude_session_id).read_text().splitlines()
         except FileNotFoundError:
@@ -62,9 +64,14 @@ class Transcripts:
             if entry.get("type") == "user":
                 if isinstance(content, str):
                     text, names = split_attachments(content, workdir)
+                    context = None
+                    if home_assistant:
+                        text, context = split_context(text)
                     item: dict[str, Any] = {"kind": "user", "text": text, "timestamp": entry.get("timestamp")}
                     if names:
                         item["attachments"] = [attachment(name) for name in names]
+                    if context:
+                        item["context"] = context
                     items.append(item)
                     continue
                 for block in content if isinstance(content, list) else []:

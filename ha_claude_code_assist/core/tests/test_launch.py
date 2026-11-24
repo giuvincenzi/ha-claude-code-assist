@@ -12,16 +12,16 @@ CLAUDES = "337ccddc-edb0-464d-9e76-5effee12e96e"
 WORKDIR = Path(f"/data/sessions/{OURS}/workdir")
 
 
-def record(*, web_search=False, read_files=True, memory_enabled=True, claude_id=None) -> SessionRecord:
+def record(*, web_search=False, read_files=True, memory_enabled=True, claude_id=None, channel="panel") -> SessionRecord:
     return SessionRecord(
-        session_id=OURS, title="", source={"channel": "panel", "key": "u"}, conversation_ids=["c"],
+        session_id=OURS, title="", source={"channel": channel, "key": "u"}, conversation_ids=["c"],
         created_at="2026-01-01T00:00:00+00:00", last_activity="2026-01-01T00:00:00+00:00", closed_at=None,
         settings=SessionSettings("haiku", "low", web_search, memory_enabled, read_files),
         claude=ClaudeSession(session_id=claude_id))
 
 
-def spec(rec: SessionRecord, resume=False):
-    settings = parse_options({"mcp_servers": '{"mcpServers": {"ha-mcp": {"type": "http", "url": "http://x"}}}'})
+def spec(rec: SessionRecord, resume=False, **options):
+    settings = parse_options({"mcp_servers": '{"mcpServers": {"ha-mcp": {"type": "http", "url": "http://x"}}}', **options})
     return build_launch_spec(rec, resume, settings=settings, memory_text="(no entries)",
                              internal_mcp_url="http://127.0.0.1:8099/mcp", workdir=WORKDIR,
                              config_dir=Path("/data/claude"))
@@ -91,3 +91,13 @@ def test_the_internal_server_knows_our_session_id():
 def test_memory_tools_are_removed_when_memory_is_off():
     assert spec(record(memory_enabled=False)).disallowed_tools
     assert spec(record(memory_enabled=True)).disallowed_tools == []
+
+
+@pytest.mark.parametrize("channel, own, other", [
+    ("panel", "The panel renders markdown", "text-to-speech"),
+    ("home_assistant", "text-to-speech", "The panel renders markdown"),
+])
+def test_the_prompt_is_the_one_of_the_sessions_channel(channel, own, other):
+    prompt = spec(record(channel=channel), prompt_home_assistant_identity="You are Jarvis.").system_prompt
+    assert own in prompt and other not in prompt
+    assert ("You are Jarvis." in prompt) is (channel == "home_assistant")

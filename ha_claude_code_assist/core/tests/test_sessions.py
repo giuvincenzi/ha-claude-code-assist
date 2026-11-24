@@ -96,6 +96,12 @@ class FakeProcess:
         self.closed = True
 
 
+async def send(manager: SessionManager, channel, source_key, conversation_id, text, source_name=None):
+    """Routes a message to its session and runs the turn, as the panel and Assist do."""
+    record = await manager.resolve(channel, source_key, conversation_id, source_name)
+    return await manager.run(record, text)
+
+
 class Clock:
     def __init__(self):
         self.value = datetime(2026, 11, 21, 8, 0, tzinfo=UTC)
@@ -173,7 +179,7 @@ def env(tmp_path):
 
 async def test_record_layout_keeps_ours_settings_and_claude_apart(env):
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hello", source_name="Test")
+    result = await send(manager, "panel", "user-1", "c1", "hello", source_name="Test")
     stored = env.stored(result.session_id)
     assert list(stored) == ["session_id", "title", "source", "conversation_ids", "created_at", "last_activity",
                             "closed_at", "settings", "claude"]
@@ -187,8 +193,8 @@ async def test_record_layout_keeps_ours_settings_and_claude_apart(env):
 
 async def test_one_folder_per_session_with_its_record_and_working_directory(env):
     manager = env.manager()
-    a = await manager.send("panel", "user-1", "c1", "hi")
-    b = await manager.send("panel", "user-2", "c2", "hi")
+    a = await send(manager, "panel", "user-1", "c1", "hi")
+    b = await send(manager, "panel", "user-2", "c2", "hi")
     assert env.folders() == sorted([a.session_id, b.session_id])
     for result in (a, b):
         folder = env.root / result.session_id
@@ -199,7 +205,7 @@ async def test_one_folder_per_session_with_its_record_and_working_directory(env)
 
 async def test_store_round_trip(env):
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hello")
+    result = await send(manager, "panel", "user-1", "c1", "hello")
     loaded = {r.session_id: r for r in SessionStore(env.root).load()}
     assert loaded[result.session_id] == manager.get(result.session_id)
 
@@ -211,7 +217,7 @@ def test_store_ignores_a_folder_without_a_record(env):
 
 async def test_store_skips_records_it_cannot_read_and_loads_the_others(env):
     manager = env.manager()
-    good = await manager.send("panel", "user-1", "c1", "hi")
+    good = await send(manager, "panel", "user-1", "c1", "hi")
     broken = env.root / "11111111-2222-4333-8444-555555555555"
     broken.mkdir()
     (broken / "session.json").write_text("{not json")
@@ -249,7 +255,7 @@ async def test_new_session_starts_without_claudes_id_and_gets_its_title_from_the
 
 async def test_a_new_conversation_gets_our_id_and_claudes_is_what_it_reports(env):
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hi")
+    result = await send(manager, "panel", "user-1", "c1", "hi")
     (process,) = FakeProcess.instances
     assert (process.spec.resume, process.spec.session_id) == (False, result.session_id)
     assert process.spec.workdir == env.root / result.session_id / "workdir"
@@ -260,13 +266,13 @@ async def test_a_new_conversation_gets_our_id_and_claudes_is_what_it_reports(env
 
 async def test_resume_uses_claudes_id_from_the_same_working_directory(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     env.transcripts.add(manager.get(first.session_id).claude.session_id)
     await manager.shutdown()  # app restart: processes stop, sessions stay open
 
     restarted = env.manager()
     env.clock.advance(minutes=1)
-    second = await restarted.send("panel", "user-1", "c1", "still there?")
+    second = await send(restarted, "panel", "user-1", "c1", "still there?")
     assert second.session_id == first.session_id
     resumed = FakeProcess.instances[-1].spec
     assert (resumed.resume, resumed.session_id) == (True, restarted.get(first.session_id).claude.session_id)
@@ -276,7 +282,7 @@ async def test_resume_uses_claudes_id_from_the_same_working_directory(env):
 async def test_each_id_is_used_for_what_it_is_when_claude_reports_another(env):
     FakeProcess.report_other_id = "11111111-2222-4333-8444-555555555555"
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     record = manager.get(first.session_id)
     assert record.session_id == first.session_id != record.claude.session_id
     assert record.claude.session_id == "11111111-2222-4333-8444-555555555555"
@@ -285,7 +291,7 @@ async def test_each_id_is_used_for_what_it_is_when_claude_reports_another(env):
     env.transcripts.add(record.claude.session_id)
     await manager.shutdown()
     restarted = env.manager()
-    await restarted.send("panel", "user-1", "c1", "again")
+    await send(restarted, "panel", "user-1", "c1", "again")
     resumed = FakeProcess.instances[-1].spec
     assert (resumed.resume, resumed.session_id) == (True, "11111111-2222-4333-8444-555555555555")
     assert resumed.workdir == env.root / first.session_id / "workdir"
@@ -302,30 +308,30 @@ async def test_a_session_claude_never_answered_starts_again_with_our_id(env):
 
 async def test_an_init_event_without_an_id_keeps_what_was_known(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     known = manager.get(first.session_id).claude.session_id
     FakeProcess.report_no_id = True
-    await manager.send("panel", "user-1", "c1", "again")
+    await send(manager, "panel", "user-1", "c1", "again")
     assert manager.get(first.session_id).claude.session_id == known
 
 
 async def test_the_working_directory_is_made_again_when_missing(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     workdir = manager.workdir(first.session_id)
     workdir.rmdir()
     await manager.shutdown()
     restarted = env.manager()
-    await restarted.send("panel", "user-1", "c1", "again")
+    await send(restarted, "panel", "user-1", "c1", "again")
     assert workdir.is_dir()
 
 
 async def test_no_resume_without_claudes_transcript(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     await manager.shutdown()  # the transcript was never written (env.transcripts is empty)
     restarted = env.manager()
-    await restarted.send("panel", "user-1", "c1", "again")
+    await send(restarted, "panel", "user-1", "c1", "again")
     spec = FakeProcess.instances[-1].spec
     assert (spec.resume, spec.session_id) == (False, first.session_id)
 
@@ -351,37 +357,37 @@ async def test_a_message_with_files_is_not_moved_to_a_new_session(env):
 
 async def test_settings_are_fixed_when_the_conversation_starts(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     env.defaults = SessionSettings("opus", "high", True, False, False)
-    again = await manager.send("panel", "user-1", "c1", "hi")
+    again = await send(manager, "panel", "user-1", "c1", "hi")
     assert again.session_id == first.session_id
     kept = manager.get(first.session_id).settings
     assert (kept.model, kept.effort, kept.web_search, kept.memory_enabled, kept.read_files) == ("haiku", "low", False, True, True)
-    other = manager.get((await manager.send("panel", "user-2", "c2", "hi")).session_id).settings
+    other = manager.get((await send(manager, "panel", "user-2", "c2", "hi")).session_id).settings
     assert (other.model, other.effort, other.web_search, other.memory_enabled, other.read_files) == ("opus", "high", True, False, False)
     assert "Read" not in FakeProcess.instances[-1].spec.builtin_tools
 
 
 async def test_mcp_servers_are_those_of_the_last_process_start(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     assert manager.get(first.session_id).settings.mcp_servers == ["ha-mcp"]
     # Changing the settings does not touch a running process...
     env.mcp_servers = {"other": {"type": "http", "url": "http://y"}}
-    await manager.send("panel", "user-1", "c1", "hi")
+    await send(manager, "panel", "user-1", "c1", "hi")
     assert manager.get(first.session_id).settings.mcp_servers == ["ha-mcp"]
     # ...a resumed one gets the configured servers.
     env.transcripts.add(manager.get(first.session_id).claude.session_id)
     await manager.shutdown()
     restarted = env.manager()
-    await restarted.send("panel", "user-1", "c1", "hi")
+    await send(restarted, "panel", "user-1", "c1", "hi")
     assert restarted.get(first.session_id).settings.mcp_servers == ["other"]
 
 
 async def test_no_mcp_servers(env):
     env.mcp_servers = {}
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hi")
+    result = await send(manager, "panel", "user-1", "c1", "hi")
     assert manager.get(result.session_id).settings.mcp_servers == []
 
 
@@ -390,8 +396,8 @@ async def test_no_mcp_servers(env):
 
 async def test_usage_is_the_latest_running_total_and_the_window_of_the_answering_model(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hello")
-    await manager.send("panel", "user-1", "c1", "again")
+    first = await send(manager, "panel", "user-1", "c1", "hello")
+    await send(manager, "panel", "user-1", "c1", "again")
     claude = manager.get(first.session_id).claude
     # The second result's totals (both models), not the sum of both results.
     assert (claude.input_tokens, claude.output_tokens, claude.cache_read_input_tokens,
@@ -408,7 +414,7 @@ async def test_context_is_the_last_model_call_of_the_turn(env):
         {"type": "result", "subtype": "success", "is_error": False, "result": "done",
          "modelUsage": {"claude-test": {"inputTokens": 12, "contextWindow": 1000}}},
     ]
-    result = await manager.send("panel", "user-1", "c1", "hi")
+    result = await send(manager, "panel", "user-1", "c1", "hi")
     assert manager.get(result.session_id).claude.context_tokens == 327
 
 
@@ -419,23 +425,23 @@ async def test_window_falls_back_to_the_largest_when_the_model_is_unknown(env):
         {"type": "result", "subtype": "success", "is_error": False, "result": "done",
          "modelUsage": {"a": {"contextWindow": 200}, "b": {"contextWindow": 1000}}},
     ]
-    result = await manager.send("panel", "user-1", "c1", "hi")
+    result = await send(manager, "panel", "user-1", "c1", "hi")
     assert manager.get(result.session_id).claude.context_window == 1000
 
 
 async def test_a_result_without_usage_keeps_the_previous_totals(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hello")
+    first = await send(manager, "panel", "user-1", "c1", "hello")
     before = manager.get(first.session_id).claude.input_tokens
     FakeProcess.script = [{"type": "result", "subtype": "error_during_execution", "is_error": True, "result": ""}]
-    await manager.send("panel", "user-1", "c1", "again")
+    await send(manager, "panel", "user-1", "c1", "again")
     claude = manager.get(first.session_id).claude
     assert claude.input_tokens == before and claude.context_tokens == 100
 
 
 async def test_usage_is_saved(env):
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hello")
+    result = await send(manager, "panel", "user-1", "c1", "hello")
     claude = env.stored(result.session_id)["claude"]
     assert claude["context_tokens"] == 100 and claude["cost_usd"] == 0.75
 
@@ -445,9 +451,9 @@ async def test_usage_is_saved(env):
 
 async def test_same_source_continues_the_session(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "conv-a", "hello")
+    first = await send(manager, "panel", "user-1", "conv-a", "hello")
     env.clock.advance(minutes=4)
-    second = await manager.send("panel", "user-1", "conv-a", "again")
+    second = await send(manager, "panel", "user-1", "conv-a", "again")
     assert first.session_id == second.session_id
     assert second.text == "echo: again"
     assert len(FakeProcess.instances) == 1
@@ -455,8 +461,8 @@ async def test_same_source_continues_the_session(env):
 
 async def test_new_conversation_id_from_same_source_is_attached(env):
     manager = env.manager()
-    first = await manager.send("assist", "satellite-kitchen", "ha-1", "turn on the light")
-    second = await manager.send("assist", "satellite-kitchen", "ha-2", "dim it")
+    first = await send(manager, "home_assistant", "satellite-kitchen", "ha-1", "turn on the light")
+    second = await send(manager, "home_assistant", "satellite-kitchen", "ha-2", "dim it")
     assert first.session_id == second.session_id
     assert manager.get(first.session_id).conversation_ids == ["ha-1", "ha-2"]
     assert env.stored(first.session_id)["conversation_ids"] == ["ha-1", "ha-2"]
@@ -464,23 +470,23 @@ async def test_new_conversation_id_from_same_source_is_attached(env):
 
 async def test_known_conversation_id_wins(env):
     manager = env.manager()
-    first = await manager.send("assist", "satellite-kitchen", "ha-1", "hi")
-    other = await manager.send("assist", "satellite-office", "ha-1", "hi again")
+    first = await send(manager, "home_assistant", "satellite-kitchen", "ha-1", "hi")
+    other = await send(manager, "home_assistant", "satellite-office", "ha-1", "hi again")
     assert other.session_id == first.session_id
 
 
 async def test_different_sources_get_different_sessions(env):
     manager = env.manager()
-    a = await manager.send("panel", "user-1", "c1", "hi")
-    b = await manager.send("panel", "user-2", "c2", "hi")
+    a = await send(manager, "panel", "user-1", "c1", "hi")
+    b = await send(manager, "panel", "user-2", "c2", "hi")
     assert a.session_id != b.session_id
 
 
 async def test_timeout_closes_and_starts_a_new_session(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     env.clock.advance(minutes=5, seconds=1)
-    second = await manager.send("panel", "user-1", "c1", "hi")
+    second = await send(manager, "panel", "user-1", "c1", "hi")
     assert second.session_id != first.session_id
     assert manager.get(first.session_id).closed_at is not None
     assert env.stored(first.session_id)["closed_at"] is not None
@@ -489,18 +495,18 @@ async def test_timeout_closes_and_starts_a_new_session(env):
 
 async def test_process_exit_closes_the_session(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     FakeProcess.fail_next = True
     with pytest.raises(TurnError, match="stopped unexpectedly"):
-        await manager.send("panel", "user-1", "c1", "boom")
+        await send(manager, "panel", "user-1", "c1", "boom")
     assert manager.get(first.session_id).closed_at is not None
-    third = await manager.send("panel", "user-1", "c1", "hi")
+    third = await send(manager, "panel", "user-1", "c1", "hi")
     assert third.session_id != first.session_id
 
 
 async def test_close_is_refused_while_the_assistant_answers(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     hold = FakeProcess.hold = asyncio.Event()
     turn = asyncio.create_task(manager.run(manager.get(first.session_id), "slow"))
     await asyncio.sleep(0)
@@ -521,7 +527,7 @@ async def test_unknown_session_message(env):
 
 async def test_manual_close(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     await manager.close(first.session_id)
     assert manager.get(first.session_id).closed_at is not None
     assert not manager.sessions()[0]["active"]
@@ -531,7 +537,7 @@ async def test_events_are_published(env):
     manager = env.manager()
     events = []
     manager.subscribe(events.append)
-    await manager.send("panel", "user-1", "c1", "hi")
+    await send(manager, "panel", "user-1", "c1", "hi")
     types = [e["type"] for e in events]
     assert types[0] == "session_updated"
     assert "turn_started" in types and types.count("turn_event") == 3
@@ -541,10 +547,10 @@ async def test_events_are_published(env):
 
 async def test_source_name_is_recorded(env):
     manager = env.manager()
-    result = await manager.send("panel", "user-1", "c1", "hi", source_name="Alex")
+    result = await send(manager, "panel", "user-1", "c1", "hi", source_name="Alex")
     assert manager.get(result.session_id).source == {"channel": "panel", "key": "user-1", "name": "Alex"}
     # same source without a name still continues the session
-    again = await manager.send("panel", "user-1", "c1", "hi")
+    again = await send(manager, "panel", "user-1", "c1", "hi")
     assert again.session_id == result.session_id
 
 
@@ -553,12 +559,12 @@ async def test_rejected_token_is_reported_clearly(env):
     events = []
     manager.subscribe(events.append)
     FakeProcess.reject_token_next = True
-    result = await manager.send("panel", "user-1", "c1", "hi")
+    result = await send(manager, "panel", "user-1", "c1", "hi")
     finished = next(e for e in events if e["type"] == "turn_finished")
     assert result.is_error and finished["error"] == "authentication_failed"
     assert "token was rejected" in finished["text"] and "Settings" in finished["text"]
     assert manager.token_rejected_at is not None
-    await manager.send("panel", "user-1", "c1", "hi again")
+    await send(manager, "panel", "user-1", "c1", "hi again")
     assert manager.token_rejected_at is None
 
 
@@ -569,7 +575,7 @@ async def test_delete_removes_the_sessions_folder_and_claudes_files(env):
     manager = env.manager()
     events = []
     manager.subscribe(events.append)
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     process = FakeProcess.instances[0]
     events.clear()
 
@@ -588,8 +594,8 @@ async def test_delete_removes_the_sessions_folder_and_claudes_files(env):
 
 async def test_delete_leaves_other_sessions_alone(env):
     manager = env.manager()
-    kept = await manager.send("panel", "user-1", "c1", "hi")
-    gone = await manager.send("panel", "user-2", "c2", "hi")
+    kept = await send(manager, "panel", "user-1", "c1", "hi")
+    gone = await send(manager, "panel", "user-2", "c2", "hi")
     await manager.delete(gone.session_id)
     assert [s["session_id"] for s in manager.sessions()] == [kept.session_id]
     assert env.folders() == [kept.session_id] and env.removed == [gone.session_id]
@@ -599,7 +605,7 @@ async def test_delete_leaves_other_sessions_alone(env):
 
 async def test_delete_when_the_working_directory_is_already_gone(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     manager.workdir(first.session_id).rmdir()
     await manager.delete(first.session_id)
     assert env.folders() == [] and env.removed == [first.session_id]
@@ -614,7 +620,7 @@ async def test_delete_a_session_claude_never_answered(env):
 
 async def test_delete_an_ended_session(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     await manager.close(first.session_id)
     await manager.delete(first.session_id)
     assert manager.sessions() == [] and env.folders() == [] and env.removed == [first.session_id]
@@ -629,7 +635,7 @@ async def test_delete_unknown_session(env):
 
 async def test_delete_is_refused_while_the_assistant_answers(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     record = manager.get(first.session_id)
     hold = FakeProcess.hold = asyncio.Event()
     turn = asyncio.create_task(manager.run(record, "slow"))
@@ -645,9 +651,9 @@ async def test_delete_is_refused_while_the_assistant_answers(env):
 
 async def test_after_delete_the_same_chat_starts_a_new_session(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     await manager.delete(first.session_id)
-    again = await manager.send("panel", "user-1", "c1", "hello again")
+    again = await send(manager, "panel", "user-1", "c1", "hello again")
     assert again.session_id != first.session_id
     assert manager.get(again.session_id).title == "hello again"
     assert env.folders() == [again.session_id]
@@ -658,9 +664,9 @@ async def test_after_delete_the_same_chat_starts_a_new_session(env):
 
 async def test_a_session_with_no_messages_for_longer_than_the_retention_is_deleted(env):
     manager = env.manager()
-    old = await manager.send("panel", "user-1", "c1", "hi")
+    old = await send(manager, "panel", "user-1", "c1", "hi")
     env.clock.advance(days=20)
-    recent = await manager.send("panel", "user-2", "c2", "hi")
+    recent = await send(manager, "panel", "user-2", "c2", "hi")
     env.clock.advance(days=11)  # old: 31 days without messages, recent: 11
 
     assert await manager.remove_expired() == [old.session_id]
@@ -671,16 +677,16 @@ async def test_a_session_with_no_messages_for_longer_than_the_retention_is_delet
 
 async def test_exactly_the_retention_period_is_kept(env):
     manager = env.manager()
-    await manager.send("panel", "user-1", "c1", "hi")
+    await send(manager, "panel", "user-1", "c1", "hi")
     env.clock.advance(days=30)
     assert await manager.remove_expired() == []
 
 
 async def test_a_shorter_retention_deletes_the_older_sessions_right_away(env):
     manager = env.manager()
-    ten_days = await manager.send("panel", "user-1", "c1", "hi")
+    ten_days = await send(manager, "panel", "user-1", "c1", "hi")
     env.clock.advance(days=7)
-    three_days = await manager.send("panel", "user-2", "c2", "hi")
+    three_days = await send(manager, "panel", "user-2", "c2", "hi")
     env.clock.advance(days=3)
     assert await manager.remove_expired() == []
 
@@ -695,7 +701,7 @@ async def test_a_shorter_retention_deletes_the_older_sessions_right_away(env):
 async def test_a_session_answering_is_never_expired(env):
     env.retention = timedelta(days=1)
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     hold = FakeProcess.hold = asyncio.Event()
     turn = asyncio.create_task(manager.run(manager.get(first.session_id), "slow"))
     await asyncio.sleep(0)
@@ -710,14 +716,14 @@ async def test_a_session_answering_is_never_expired(env):
 async def test_expired_sessions_are_removed_when_the_app_starts_and_every_hour(env, monkeypatch):
     monkeypatch.setattr(sessions_module, "REAPER_INTERVAL", 0)
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
     env.clock.advance(days=31)
     restarted = env.manager()
     restarted.start()
     await until(lambda: env.removed == [first.session_id])  # at start
     assert restarted.sessions() == []
 
-    second = await restarted.send("panel", "user-2", "c2", "hi")
+    second = await send(restarted, "panel", "user-2", "c2", "hi")
     env.clock.advance(days=31)  # and more than an hour since the last removal
     await until(lambda: env.removed == [first.session_id, second.session_id])
     await restarted.shutdown()
@@ -726,7 +732,7 @@ async def test_expired_sessions_are_removed_when_the_app_starts_and_every_hour(e
 
 async def test_an_interrupted_deletion_leaves_the_session_listed_and_is_finished_later(env):
     manager = env.manager()
-    first = await manager.send("panel", "user-1", "c1", "hi")
+    first = await send(manager, "panel", "user-1", "c1", "hi")
 
     def stopped(record):
         raise RuntimeError("app stopped")  # while Claude Code's files are being removed
@@ -748,3 +754,54 @@ async def until(condition, timeout=2.0):
     while not condition():
         assert loop.time() < deadline, "timed out"
         await asyncio.sleep(0.01)
+
+
+# --- the Home Assistant channel ------------------------------------------------------
+
+
+async def test_a_session_saved_on_the_voice_channel_is_on_the_home_assistant_channel(env):
+    # Before 0.3.0 the Home Assistant channel was called "voice".
+    manager = env.manager()
+    first = await send(manager, "home_assistant", "satellite:assist_satellite.kitchen", "ha-1", "hi")
+    stored = env.stored(first.session_id)
+    stored["source"]["channel"] = "voice"
+    (env.root / first.session_id / "session.json").write_text(json.dumps(stored))
+    (loaded,) = SessionStore(env.root).load()
+    assert loaded.source == {"channel": "home_assistant", "key": "satellite:assist_satellite.kitchen"}
+
+
+async def test_what_home_assistant_sent_is_kept_with_each_message_as_it_came(env):
+    manager = env.manager()
+    record = await manager.resolve("home_assistant", "user:u1", "ha-1")
+    first = {"text": "hi", "conversation_id": None, "language": "it", "extra_system_prompt": None}
+    second = {"text": "and now?", "conversation_id": "ha-1", "language": "it", "extra_system_prompt": "Asked: X"}
+    await manager.run(record, "hi", home_assistant_input=first)
+    env.clock.advance(minutes=1)
+    await manager.run(record, "and now?", home_assistant_input=second)
+    assert manager.home_assistant_inputs(record.session_id) == [
+        {"received_at": "2026-11-21T08:00:00+00:00", "input": first},
+        {"received_at": "2026-11-21T08:01:00+00:00", "input": second},
+    ]
+    assert sorted(p.name for p in (env.root / record.session_id).iterdir()) == [
+        "home_assistant.json", "session.json", "workdir"]
+    assert "home_assistant" not in env.stored(record.session_id)  # the record stays small
+    await manager.delete(record.session_id)
+    assert env.folders() == []
+
+
+async def test_a_panel_session_has_nothing_from_home_assistant(env):
+    manager = env.manager()
+    first = await send(manager, "panel", "user-1", "c1", "hi")
+    assert manager.home_assistant_inputs(first.session_id) == []
+    with pytest.raises(KeyError):
+        manager.home_assistant_inputs("8f14e45f-ceea-467a-9575-1f0a2f8a1c11")
+
+
+async def test_what_home_assistant_sent_goes_with_its_message_to_a_new_session(env):
+    manager = env.manager()
+    record = await manager.resolve("home_assistant", "user:u1", "ha-1")
+    await manager.close(record.session_id)  # ended while the message waited
+    moved = await manager.run(record, "later", home_assistant_input={"text": "later"})
+    assert moved.session_id != record.session_id
+    assert manager.home_assistant_inputs(record.session_id) == []
+    assert [i["input"] for i in manager.home_assistant_inputs(moved.session_id)] == [{"text": "later"}]

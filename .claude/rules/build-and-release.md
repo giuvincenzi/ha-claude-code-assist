@@ -6,6 +6,8 @@ paths:
   - "ha_claude_code_assist/config.yaml"
   - "ha_claude_code_assist/Dockerfile"
   - "custom_components/ha_claude_code_assist/manifest.json"
+  - "custom_components/ha_claude_code_assist/__init__.py"
+  - "ha_claude_code_assist/core/ha_cca/app.py"
 ---
 
 # Build and release
@@ -28,7 +30,8 @@ How the app is built and how the app and the integration are released.
   there, in its own pull request.
 - The version is in `config.yaml` (the Supervisor offers the app's update when it changes) and in
   the integration's `manifest.json`, always the same (`unit_test` checks). Only the release pull
-  request changes it (`block_version_change`).
+  request changes it (`block_version_change`). At runtime the app reads its own from the
+  Supervisor and the integration from its manifest: no other copy anywhere.
 
 ## Making a release
 

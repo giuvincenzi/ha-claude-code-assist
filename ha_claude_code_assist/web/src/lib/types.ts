@@ -58,6 +58,21 @@ export interface TokenStatus {
   rejected_at?: string | null;
 }
 
+/** One section of a channel's prompt (Settings > Agent). */
+export interface PromptSection {
+  /** The setting that holds it. */
+  option: string;
+  /** The text in use: the user's, or the default. */
+  text: string;
+  default: string;
+}
+
+/** What Home Assistant sent with one message, kept as it came. */
+export interface HomeAssistantInput {
+  received_at: string;
+  input: { text: string } & Record<string, unknown>;
+}
+
 export interface SettingsView {
   values: {
     model: string;
@@ -71,11 +86,20 @@ export interface SettingsView {
     memory_max_entries: number;
     memory_max_entry_length: number;
   };
+  /** Every section of every channel's prompt, by channel then section, in the prompt's order. */
+  prompts: Record<string, Record<string, PromptSection>>;
   token: TokenStatus;
   choices: { model: string[]; effort: string[] };
 }
 
 export interface Status {
+  /** The app as Home Assistant describes it; null where the Supervisor did not say. */
+  app: { version: string | null; description: string | null; url: string | null };
+  /** The integration that last talked to the app: `known` is false until one did, and its
+   * version is null for one before 0.3.0, which does not report it. */
+  integration: { known: boolean; version: string | null };
+  /** What to update when the app and its integration are not the same version. */
+  version_problem: string | null;
   claude_code_version: string | null;
   token: TokenStatus;
   token_rejected_at: string | null;
@@ -97,7 +121,8 @@ export interface ChatAttachment {
 }
 
 export type ChatItem = (
-  | { kind: "user"; text: string; attachments?: ChatAttachment[] }
+  /** `context`: what Home Assistant sent with the message for the assistant. */
+  | { kind: "user"; text: string; attachments?: ChatAttachment[]; context?: string }
   | { kind: "assistant"; text: string; duration_ms?: number }
   | { kind: "tool"; id?: string; name: string; input: unknown; result: string | null; is_error: boolean }
   | { kind: "error"; text: string }
@@ -112,7 +137,9 @@ export type CoreEvent =
   | { type: "turn_finished"; session_id: string; is_error: boolean; error: string | null; text: string }
   | { type: "memory_changed" }
   /** The settings changed, from this panel or another one: anything that shows them reloads. */
-  | { type: "settings_changed" };
+  | { type: "settings_changed" }
+  /** Something the status bar shows changed, such as the integration's version. */
+  | { type: "status_changed" };
 
 // Subset of Claude Code stream-json events used by the panel.
 export interface ClaudeEvent {
