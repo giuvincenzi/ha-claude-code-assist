@@ -10,6 +10,7 @@ import "../../ui/hca-banner";
 import "../../ui/hca-lightbox";
 import type { HcaLightbox } from "../../ui/hca-lightbox";
 import "../../ui/hca-code-block";
+import "../../ui/hca-detail";
 import "../../ui/hca-message";
 import "../../ui/hca-tool-call";
 import "../../ui/hca-typing";
@@ -68,7 +69,7 @@ export class HcaMessageList extends LitElement {
   }
 
   private renderAttachments(files: ChatAttachment[]) {
-    return html`<div slot="attachments" class="attachments">
+    return html`<div slot="before" class="attachments">
       ${files.map((a) => html`<hca-attachment name=${a.name} src=${this.src(a)} ?loading=${a.loading} ?failed=${a.failed}
         @hca-open=${() => this.open(a)}></hca-attachment>`)}
     </div>`;
@@ -84,6 +85,11 @@ export class HcaMessageList extends LitElement {
           case "user":
             return html`<hca-message from="user" .text=${item.text}
               meta=${meta(this.userName, formatClock(item.timestamp))}>
+              ${item.context
+                ? html`<hca-detail slot="before" icon="info" label="Context from Home Assistant">
+                    <hca-code-block .code=${item.context}></hca-code-block>
+                  </hca-detail>`
+                : nothing}
               ${item.attachments?.length ? this.renderAttachments(item.attachments) : nothing}
             </hca-message>`;
           case "assistant":

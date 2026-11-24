@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import supervisor
+from .prompt import CHANNELS, DEFAULTS, HOME_ASSISTANT, PANEL, SECTIONS
 
 MODELS = ("haiku", "sonnet", "opus")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -34,6 +35,21 @@ OPTION_NAMES = {
     "read_files": "Read files",
 }
 
+# How the panel names the channels and the sections of the prompt (Settings > Agent).
+CHANNEL_NAMES = {PANEL: "Chat panel", HOME_ASSISTANT: "Home Assistant"}
+SECTION_NAMES = {"identity": "Identity", "personality": "Personality", "capabilities": "Capabilities",
+                 "response_style": "Response style", "acting": "Acting"}
+
+
+def prompt_option(channel: str, section: str) -> str:
+    """The option that holds a section of a channel's prompt: empty means the default text."""
+    return f"prompt_{channel}_{section}"
+
+
+PROMPT_OPTIONS = {prompt_option(c, s): (c, s) for c in CHANNELS for s in SECTIONS}
+OPTION_NAMES.update({key: f"The {SECTION_NAMES[s]} section of the {CHANNEL_NAMES[c]} prompt"
+                     for key, (c, s) in PROMPT_OPTIONS.items()})
+
 
 def _one_of(choices: tuple[str, ...]) -> str:
     return f"{', '.join(choices[:-1])} or {choices[-1]}"
@@ -52,6 +68,18 @@ class Settings:
     memory_max_entry_length: int
     web_search: bool
     read_files: bool
+    # The text of every section of every channel's prompt: the user's, or the default.
+    prompts: dict[str, dict[str, str]]
+
+
+def normalize_prompt(key: str, value: Any) -> str:
+    """What is saved for a section: the text without leading and trailing blanks, or nothing
+    when it is blank or the default, so a later version's default reaches it."""
+    if not isinstance(value, str):
+        raise SettingsError(f"{OPTION_NAMES[key]} must be text.")
+    channel, section = PROMPT_OPTIONS[key]
+    text = value.strip()
+    return "" if text == DEFAULTS[channel][section] else text
 
 
 def parse_mcp_servers(text: str) -> dict[str, Any]:
@@ -103,7 +131,15 @@ def parse_options(raw: dict[str, Any]) -> Settings:
         memory_max_entry_length=positive_int("memory_max_entry_length", 500),
         web_search=boolean("web_search", False),
         read_files=boolean("read_files", True),
+        prompts=_prompts(raw),
     )
+
+
+def _prompts(raw: dict[str, Any]) -> dict[str, dict[str, str]]:
+    prompts: dict[str, dict[str, str]] = {channel: {} for channel in CHANNELS}
+    for key, (channel, section) in PROMPT_OPTIONS.items():
+        prompts[channel][section] = normalize_prompt(key, raw.get(key) or "") or DEFAULTS[channel][section]
+    return prompts
 
 
 class SettingsStore:
@@ -132,6 +168,8 @@ class SettingsStore:
         }
 
     async def update(self, changes: dict[str, Any]) -> Settings:
+        changes = {key: normalize_prompt(key, value) if key in PROMPT_OPTIONS else value
+                   for key, value in changes.items()}
         raw = {**self._raw, **changes}
         settings = parse_options(raw)  # local validation first, clear errors
         await asyncio.to_thread(_supervisor_set_options, raw)

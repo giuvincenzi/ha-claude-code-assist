@@ -95,6 +95,24 @@ try {
   other.close();
   check(true, "the change announced to every open panel");
   await panel.request("settings/update", { changes: { session_timeout_minutes: settings.values.session_timeout_minutes } });
+
+  // A section of a prompt (Settings > Agent) is saved without the blanks around it, and its default
+  // as nothing, so a later version's default reaches it.
+  const identity = settings.prompts.home_assistant.identity;
+  const rewritten = await panel.request("settings/update", { changes: { [identity.option]: "  You are the smoke test.  " } });
+  const [withPrompt] = await supervisorCalls(accessToken, [{ endpoint: `/addons/${APP}/info`, method: "get" }]);
+  const back = await panel.request("settings/update", { changes: { [identity.option]: identity.default } });
+  const [withDefault] = await supervisorCalls(accessToken, [{ endpoint: `/addons/${APP}/info`, method: "get" }]);
+  check(rewritten.prompts.home_assistant.identity.text === "You are the smoke test."
+    && withPrompt.options[identity.option] === "You are the smoke test."
+    && back.prompts.home_assistant.identity.text === identity.default && withDefault.options[identity.option] === "",
+    "a section of a prompt saved through the Supervisor, and its default saved as nothing");
+
+  // The app knows its own version from the Supervisor, which reads it from config.yaml.
+  const status = await panel.request("status/get");
+  check(status.app.version === stored.version && status.app.url && status.app.description,
+    `the app knows its version, ${status.app.version}, and its address`);
+
   await panel.request("settings/update", { changes: { mcp_servers: '{"mcpServers": {"ha_cca": {}}}' } })
     .then(() => check(false, "reserved MCP name rejected"), (err) => check(/reserved/.test(err.message), "reserved MCP name rejected"));
 
@@ -213,7 +231,8 @@ try {
   check(deleted && historyGone, "session deleted from the panel");
 
   // Assist: the voice assistant sends the sentence to its agent, the integration, which sends it
-  // to the app; the app answers from a voice session of the user who spoke (no voice device here).
+  // to the app; the app answers from a Home Assistant session of the user who spoke (no voice
+  // device here).
   const [entries, registry, pipelines] = await homeAssistantCalls(accessToken, [
     { type: "config_entries/get", domain: "ha_claude_code_assist" },
     { type: "config/entity_registry/list" },
@@ -230,15 +249,26 @@ try {
     `Assist answered: ${JSON.stringify(spoken.speech)}, streamed in ${streamed.length} parts`);
   const again = await assist(accessToken, "Which word did you just reply with? Answer with the word only.",
     spoken.result.conversation_id);
-  // The sessions holding this conversation: exactly one, a voice session of the user who spoke. Other voice sessions
-  // may be listed (Assist used by hand in the test environment), so the check looks for this one only.
-  const voice = (await panel.request("sessions/list"))
+  // The sessions holding this conversation: exactly one, a Home Assistant session of the user who spoke. Other
+  // Home Assistant sessions may be listed (Assist used by hand in the test environment), so the check looks for
+  // this one only.
+  const fromAssist = (await panel.request("sessions/list"))
     .filter((s) => s.conversation_ids.includes(spoken.result.conversation_id));
-  check(voice.length === 1 && voice[0].source.channel === "voice" && voice[0].source.key.startsWith("user:")
+  check(fromAssist.length === 1 && fromAssist[0].source.channel === "home_assistant"
+    && fromAssist[0].source.key.startsWith("user:")
     && again.result.conversation_id === spoken.result.conversation_id && /pong/i.test(again.speech),
-    `one voice session for the conversation, named ${JSON.stringify(voice[0]?.source.name)}`);
-  await panel.request("sessions/close", { session_id: voice[0].session_id });
-  await panel.request("sessions/delete", { session_id: voice[0].session_id });
+    `one Home Assistant session for the conversation, named ${JSON.stringify(fromAssist[0]?.source.name)}`);
+  // What Home Assistant gave the agent with each message is kept as it came.
+  const received = await panel.request("sessions/home_assistant", { session_id: fromAssist[0].session_id });
+  check(received.length === 2 && received[0].input.text.endsWith("pong") && received[0].input.language
+    && received[1].input.conversation_id === spoken.result.conversation_id,
+    "what Home Assistant sent with each message kept for the panel");
+  // The integration reports its version, the same as the app's.
+  const versions = await panel.request("status/get");
+  check(versions.integration.known && versions.integration.version === versions.app.version && !versions.version_problem,
+    `the integration reported its version, ${versions.integration.version}, the same as the app's`);
+  await panel.request("sessions/close", { session_id: fromAssist[0].session_id });
+  await panel.request("sessions/delete", { session_id: fromAssist[0].session_id });
 
   // A rejected token is reported as an error with what to do, then cleared by the right token.
   await panel.request("settings/update", { changes: { claude_code_oauth_token: "sk-ant-oat01-rejected-by-the-smoke-test" } });

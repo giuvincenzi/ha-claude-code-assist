@@ -5,8 +5,15 @@
   runs in the host's network, so its requests come from the host's address, as any other
   process of the host would: the address alone proves nothing. Every request carries the token
   the core created (`AssistToken`), which the integration gets through Supervisor discovery.
-- A message goes to a voice session (channel "voice"), keyed by the voice device it came from;
-  Home Assistant's conversation id is attached to it, as the panel's chat ids are.
+- A request is {"conversation_id", "source": {"key", "name"}, "input"}: `input` is what Home
+  Assistant gave the agent (its `ConversationInput`, as Home Assistant turns it into JSON), kept
+  as it came for the panel. Its `extra_system_prompt`, the context Home Assistant sends with a
+  message (the question an automation asked, for example), reaches Claude at the start of the
+  message, in its own tag.
+- A message goes to a Home Assistant session (channel "home_assistant"), keyed by the voice
+  device it came from; Home Assistant's conversation id is attached to it, as the panel's chat
+  ids are.
+- Every request carries the integration's version and every answer the app's (versions.py).
 - The answer streams back as lines of JSON, so the speech can start before it is complete.
 """
 
@@ -18,7 +25,7 @@ import json
 import logging
 import os
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +33,15 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from . import supervisor
+from .prompt import HOME_ASSISTANT, with_context
 from .sessions import SessionManager, TurnError
+from .versions import APP_VERSION_HEADER, INTEGRATION_VERSION_HEADER, IntegrationVersion, problem_message
 
 LOGGER = logging.getLogger(__name__)
 
 # The integration's domain: Home Assistant starts its config flow for the service announced.
 DISCOVERY_SERVICE = "ha_claude_code_assist"
-CHANNEL = "voice"
+CHANNEL = HOME_ASSISTANT
 
 
 class AssistToken:
@@ -81,24 +90,26 @@ def text_delta(message: dict[str, Any]) -> tuple[str | None, bool]:
     return None, False
 
 
-async def stream_turn(sessions: SessionManager, text: str, conversation_id: str | None,
-                      source_key: str, source_name: str | None) -> AsyncIterator[dict[str, Any]]:
-    """Runs a voice turn and yields its answer: {"delta": text} as it is written, then
+async def stream_turn(sessions: SessionManager, conversation_id: str | None, source_key: str,
+                      source_name: str | None, ha_input: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    """Runs a turn and yields its answer: {"delta": text} as it is written, then
     {"done": true, "error": None | "...", "text": ...} (the whole answer when nothing streamed)."""
+    text = str(ha_input["text"]).strip()
     record = await sessions.resolve(CHANNEL, source_key, conversation_id, source_name)
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    stop = sessions.subscribe(lambda message: message.get("session_id") == record.session_id
-                              and queue.put_nowait(message))
-    turn = asyncio.create_task(sessions.run(record, text))
+    stop = sessions.subscribe(lambda event: event.get("session_id") == record.session_id
+                              and queue.put_nowait(event))
+    turn = asyncio.create_task(sessions.run(record, with_context(text, ha_input.get("extra_system_prompt")),
+                                            title=text, home_assistant_input=ha_input))
     streamed = False
     try:
         while True:
-            message = asyncio.create_task(queue.get())
-            await asyncio.wait({message, turn}, return_when=asyncio.FIRST_COMPLETED)
-            if not message.done():
+            next_event = asyncio.create_task(queue.get())
+            await asyncio.wait({next_event, turn}, return_when=asyncio.FIRST_COMPLETED)
+            if not next_event.done():
                 # The turn ended without our session's last event: it went to a new session
                 # (this one closed while the message waited), or it failed before running.
-                message.cancel()
+                next_event.cancel()
                 try:
                     result = turn.result()
                 except TurnError as err:
@@ -107,7 +118,7 @@ async def stream_turn(sessions: SessionManager, text: str, conversation_id: str 
                 yield {"done": True, "error": "failed" if result.is_error else None,
                        "text": "" if streamed and not result.is_error else result.text}
                 return
-            event = message.result()
+            event = next_event.result()
             delta, new_block = text_delta(event)
             if new_block and streamed:
                 yield {"delta": "\n\n"}
@@ -122,34 +133,47 @@ async def stream_turn(sessions: SessionManager, text: str, conversation_id: str 
         stop()  # the turn itself goes on if Home Assistant stops listening: the session stays whole
 
 
-def assist_router(sessions: SessionManager, token: AssistToken) -> APIRouter:
+def assist_router(sessions: SessionManager, token: AssistToken, app_version: Callable[[], str | None],
+                  integration: IntegrationVersion, on_integration_changed: Callable[[], None]) -> APIRouter:
     router = APIRouter()
 
     def refused(request: Request) -> Response | None:
-        if token.matches(request.headers.get("authorization")):
-            return None
-        return JSONResponse({"error": "The token of HA Claude Code Assist is not valid."}, status_code=401)
+        """None for a request with the token, whose integration version is then recorded."""
+        if not token.matches(request.headers.get("authorization")):
+            return JSONResponse({"error": "The token of HA Claude Code Assist is not valid."}, status_code=401)
+        if integration.report(request.headers.get(INTEGRATION_VERSION_HEADER)):
+            on_integration_changed()
+        return None
+
+    def answer(response: Response) -> Response:
+        if version := app_version():
+            response.headers[APP_VERSION_HEADER] = version
+        return response
 
     @router.get("/api/assist/check")
     async def check(request: Request) -> Response:
-        """Lets the integration check the address and the token while it is set up."""
-        return refused(request) or JSONResponse({"ok": True})
+        """Lets the integration check the address and the token, and the versions."""
+        return answer(refused(request) or JSONResponse({"ok": True}))
 
     @router.post("/api/assist")
     async def assist(request: Request) -> Response:
         if error := refused(request):
-            return error
+            return answer(error)
         body = await request.json()
-        text = str(body.get("text") or "").strip()
-        source = body.get("source") or {}
-        if not text or not source.get("key"):
-            return JSONResponse({"error": "A message needs its text and its source."}, status_code=400)
+        ha_input = body.get("input")
+        source = body.get("source")
+        if (not isinstance(ha_input, dict) or not str(ha_input.get("text") or "").strip()
+                or not isinstance(source, dict) or not source.get("key")):
+            # A request the app does not understand comes from an integration of another version.
+            text = (problem_message(app_version(), integration.version)
+                    or "A message needs its text and its source.")
+            return answer(JSONResponse({"error": text}, status_code=400))
 
         async def lines() -> AsyncIterator[bytes]:
-            async for item in stream_turn(sessions, text, body.get("conversation_id"),
-                                          str(source["key"]), source.get("name")):
+            async for item in stream_turn(sessions, body.get("conversation_id"), str(source["key"]),
+                                          source.get("name"), ha_input):
                 yield (json.dumps(item) + "\n").encode()
 
-        return StreamingResponse(lines(), media_type="application/x-ndjson")
+        return answer(StreamingResponse(lines(), media_type="application/x-ndjson"))
 
     return router

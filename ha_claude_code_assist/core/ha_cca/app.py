@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import access
+from . import access, supervisor
 from .app_info import AppInfoContext, render_app_info
 from .assist import AssistToken, announce, assist_router
 from .attachment_routes import attachment_router
@@ -27,6 +27,7 @@ from .memory import MemoryStore
 from .panel import Panel
 from .sessions import SessionManager, SessionRecord, SessionSettings, SessionStore
 from .transcripts import Transcripts
+from .versions import IntegrationVersion, problem_message
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 LOGGER = logging.getLogger("ha_cca")
@@ -47,6 +48,7 @@ memory_store = MemoryStore(
 )
 transcripts = Transcripts(CLAUDE_CONFIG_DIR)
 assist_token = AssistToken(DATA_DIR / "assist_token")
+integration_version = IntegrationVersion(DATA_DIR / "integration.json")
 
 
 session_store = SessionStore(SESSIONS_DIR)
@@ -95,17 +97,29 @@ def apply_settings(changes: dict[str, Any]) -> None:
 
 
 claude_code_version: str | None = None
+# The app as the Supervisor describes it, from config.yaml: {"version", "description", "url"}.
+app_details: dict[str, str | None] = {"version": None, "description": None, "url": None}
 
 
 def status() -> dict[str, Any]:
     sessions = session_manager.sessions()
     return {
+        "app": app_details,
+        "integration": {"known": integration_version.known, "version": integration_version.version},
+        "version_problem": problem_message(app_details["version"], integration_version.version)
+        if integration_version.known else None,
         "claude_code_version": claude_code_version,
         "token": settings_store.token_status(),
         "token_rejected_at": session_manager.token_rejected_at,
         "mcp_servers": sorted(settings_store.settings.mcp_servers),
         "active_sessions": sum(1 for s in sessions if s["active"]),
     }
+
+
+def integration_changed() -> None:
+    if problem := problem_message(app_details["version"], integration_version.version):
+        LOGGER.warning("%s", problem)
+    panel.notify({"type": "status_changed"})
 
 
 def app_info(session_id: str | None) -> str:
@@ -152,6 +166,14 @@ class ClientFilter:
         await self.app(scope, receive, send)
 
 
+def read_app_details() -> dict[str, str | None]:
+    """The app's version, description and address, as the Supervisor reads them from config.yaml."""
+    data = supervisor.call("GET", "/addons/self/info").get("data") or {}
+    if not data:
+        LOGGER.error("The Supervisor did not describe the app: its version is not known")
+    return {key: data.get(key) for key in ("version", "description", "url")}
+
+
 async def read_claude_code_version() -> str | None:
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -175,6 +197,10 @@ async def announce_to_home_assistant() -> None:
 async def lifespan(app: FastAPI):
     global claude_code_version
     claude_code_version = await read_claude_code_version()
+    try:
+        app_details.update(await asyncio.to_thread(read_app_details))
+    except OSError as err:
+        LOGGER.error("The Supervisor did not describe the app: %s", err)
     # The MCP session manager must run for the lifetime of the app; mounted
     # sub-app lifespans are not run by FastAPI.
     async with mcp.session_manager.run():
@@ -188,7 +214,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(attachment_router(session_manager))
-app.include_router(assist_router(session_manager, assist_token))
+app.include_router(assist_router(session_manager, assist_token, lambda: app_details["version"],
+                                 integration_version, integration_changed))
 
 
 @app.get("/api/status")

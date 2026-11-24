@@ -1,6 +1,7 @@
 ---
 paths:
   - "ha_claude_code_assist/core/ha_cca/prompt.py"
+  - "ha_claude_code_assist/core/ha_cca/config.py"
   - "ha_claude_code_assist/core/ha_cca/mcp_tools.py"
   - "ha_claude_code_assist/core/ha_cca/app_info.py"
 ---
@@ -10,8 +11,14 @@ paths:
 The system prompt Claude gets in every session and the internal tools (`ha_cca_*`).
 
 - The prompt holds only what does not change: identity, personality, behaviour. Its only
-  variable parts are the channel (fixed for the conversation) and the memory sections (only when
-  memory is on). Anything that changes more often breaks the prompt cache.
+  variable parts are the channel (fixed for the conversation), the sections the user rewrites and
+  the memory sections (only when memory is on). Anything that changes more often breaks the
+  prompt cache.
+- There is one prompt per channel. The user rewrites its sections (`SECTIONS`) in Settings >
+  Agent, kept in the options `prompt_<channel>_<section>`; a blank one, or one equal to its
+  default, is saved empty (`normalize_prompt`), so a later version's default reaches it.
+- What the app needs to work (tools, `ha_cca_app_info`, reading the real state, the context tag)
+  is in `SYSTEM`, never in a section the user can rewrite (`test_prompt.py` checks).
 - Facts about the app never go in the prompt: they are in `DOCS.md`, which `ha_cca_app_info`
   returns with the current state appended. The prompt only says to call it.
 - Rules in the prompt say why when it matters, in calm words: no capitals or "never" for

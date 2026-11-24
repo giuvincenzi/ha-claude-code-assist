@@ -7,7 +7,7 @@ import { base } from "./styles";
 /**
  * One message of a chat: from the user (plain text in a bubble on the right, as it was written)
  * or from the assistant (markdown on the left). `meta` above it, `footer` below, both small and
- * grey.
+ * grey; what comes with the message, such as attached files, goes in slot "before", above the text.
  */
 @customElement("hca-message")
 export class HcaMessage extends LitElement {
@@ -56,7 +56,7 @@ export class HcaMessage extends LitElement {
   render() {
     return html`
       ${this.meta ? html`<div class="meta">${this.meta}</div>` : nothing}
-      <slot name="attachments"></slot>
+      <slot name="before"></slot>
       ${this.from === "assistant"
         ? html`<hca-markdown text=${this.text}></hca-markdown>`
         : this.text ? html`<div class="text">${this.text}</div>` : nothing}

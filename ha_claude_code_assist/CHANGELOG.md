@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- Settings > Agent, where you rewrite the assistant's prompt, one for the chat of the panel and
+  one for Home Assistant Assist, in five sections that each start from a default text.
+- About, with the versions of the app, the integration and Claude Code, and links to the
+  documentation, the changelog, the issues and the repository. When the app and the integration
+  are not the same version, the panel shows Update needed and says which one to update, Assist
+  says it too, and Home Assistant shows it in Repairs when the app is older.
+- Sessions from Home Assistant show in Info what Home Assistant sent with each message.
+
+### Changed
+
+- Answers through Assist are shorter and written to be heard: one or two sentences with the
+  essential details, a few words to confirm an action, and no links, sources or lists.
+- Save and Discard stay in a bar at the bottom of Settings and Tools, and work only when
+  something changed. In Settings they cover every tab, and a dot marks the tabs with changes
+  not saved yet.
+- The list of sessions shows where each one started, and a dot before its title when it is
+  active or answering.
+- Sessions from Assist are on the Home Assistant channel, instead of Voice, since they come
+  from the Assist dialog too. Update the app and the integration together: the integration of
+  0.2.0 cannot talk to this app.
+
+### Fixed
+
+- An answer to a question an automation asked with Start conversation on satellite now reaches
+  the assistant together with the question, so it knows what you are answering.
+
 ## 0.2.0
 
 ### Changed

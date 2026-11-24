@@ -2,7 +2,7 @@
 
 Client → server: {"id": n, "type": "<command>", ...}
 Server → client: {"id": n, "type": "result", "success": bool, "result" | "error"}
-                 {"type": "event", "event": {...}}   (sessions, turns, memory, settings)
+                 {"type": "event", "event": {...}}   (sessions, turns, memory, settings, status)
 """
 
 from __future__ import annotations
@@ -17,18 +17,20 @@ from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from . import attachments
-from .config import EFFORTS, MODELS, SettingsStore
+from .config import EFFORTS, MODELS, PROMPT_OPTIONS, SettingsStore, prompt_option
 from .mcp_check import check_server
 from .memory import MemoryStore
+from .prompt import DEFAULTS, HOME_ASSISTANT, PANEL
 from .sessions import SessionManager
 from .transcripts import Transcripts
 
 LOGGER = logging.getLogger(__name__)
 
-CHANNEL = "panel"
+CHANNEL = PANEL
 EDITABLE_SETTINGS = {
     "claude_code_oauth_token", "model", "effort", "web_search", "read_files", "mcp_servers",
     "session_timeout_minutes", "session_retention_days", "memory_enabled", "memory_max_entries", "memory_max_entry_length",
+    *PROMPT_OPTIONS,
 }
 
 
@@ -138,10 +140,16 @@ class Panel:
 
     async def _cmd_sessions_history(self, request: dict[str, Any], user: tuple[str, str | None]) -> list[dict[str, Any]]:
         session_id = str(request["session_id"])
-        claude_id = self._sessions.get(session_id).claude.session_id
-        if claude_id is None:  # Claude Code has not answered yet: no transcript
+        record = self._sessions.get(session_id)
+        if record.claude.session_id is None:  # Claude Code has not answered yet: no transcript
             return []
-        return await asyncio.to_thread(self._transcripts.messages, self._sessions.workdir(session_id), claude_id)
+        return await asyncio.to_thread(self._transcripts.messages, self._sessions.workdir(session_id),
+                                       record.claude.session_id, record.source["channel"] == HOME_ASSISTANT)
+
+    async def _cmd_sessions_home_assistant(self, request: dict[str, Any],
+                                           user: tuple[str, str | None]) -> list[dict[str, Any]]:
+        """What Home Assistant sent with each message of a session, as it came."""
+        return await asyncio.to_thread(self._sessions.home_assistant_inputs, str(request["session_id"]))
 
     async def _cmd_sessions_close(self, request: dict[str, Any], user: tuple[str, str | None]) -> None:
         await self._sessions.close(str(request["session_id"]))
@@ -180,9 +188,13 @@ class Panel:
         await self._settings.update(changes)
         self._on_settings_changed(changes)
         # After the change is applied, so every panel reads the new state (status bar included).
-        for outbox in self._outboxes:
-            outbox.put_nowait({"type": "event", "event": {"type": "settings_changed"}})
+        self.notify({"type": "settings_changed"})
         return self._settings_view()
+
+    def notify(self, event: dict[str, Any]) -> None:
+        """Sends an event to every open panel."""
+        for outbox in self._outboxes:
+            outbox.put_nowait({"type": "event", "event": event})
 
     async def _cmd_mcp_check(self, request: dict[str, Any], user: tuple[str, str | None]) -> dict[str, Any]:
         """Connects to every saved MCP server, in parallel, and reports what each answered."""
@@ -196,7 +208,12 @@ class Panel:
     def _settings_view(self) -> dict[str, Any]:
         raw = self._settings.raw
         return {
-            "values": {key: raw.get(key) for key in EDITABLE_SETTINGS - {"claude_code_oauth_token"}},
+            "values": {key: raw.get(key) for key in EDITABLE_SETTINGS - {"claude_code_oauth_token", *PROMPT_OPTIONS}},
+            # Every section of every channel's prompt: the option that holds it, its text, its default.
+            "prompts": {channel: {section: {"option": prompt_option(channel, section), "text": text,
+                                            "default": DEFAULTS[channel][section]}
+                                  for section, text in sections.items()}
+                        for channel, sections in self._settings.settings.prompts.items()},
             "token": {**self._settings.token_status(), "rejected_at": self._sessions.token_rejected_at},
             "choices": {"model": list(MODELS), "effort": list(EFFORTS)},
         }

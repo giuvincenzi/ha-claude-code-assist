@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 
 import type { Connection } from "../../lib/connection";
 import { CoreController } from "../../lib/core-controller";
@@ -10,6 +10,7 @@ import "../../ui/hca-banner";
 import "../../ui/hca-button";
 import "../../ui/hca-card";
 import "../../ui/hca-empty-state";
+import "../../ui/hca-form-layout";
 import "../../ui/hca-icon-button";
 import "../../ui/hca-input";
 import "../../ui/hca-page";
@@ -33,10 +34,17 @@ interface ServerRow {
   check?: CheckResult | "checking";
 }
 
-/** What the assistant can use: web search and the MCP servers, one card each, checked after saving. */
+/**
+ * What the assistant can use: web search and the MCP servers, one card each, checked after saving.
+ * Save and Discard stay in the bar at the bottom, enabled when something changed.
+ */
 @customElement("hca-tools-view")
 export class HcaToolsView extends LitElement {
   static styles = css`
+    :host {
+      display: block;
+      height: 100%;
+    }
     .servers {
       display: grid;
       gap: var(--hca-space-3);
@@ -49,21 +57,18 @@ export class HcaToolsView extends LitElement {
     .server-head hca-input {
       flex: 1;
     }
-    .actions {
-      display: flex;
-      gap: var(--hca-space-3);
-      align-items: center;
-    }
   `;
 
   @property({ attribute: false }) connection!: Connection;
   @state() private settings: SettingsView | null = null;
+  @state() private webSearch = false;
+  @state() private readFiles = false;
   @state() private servers: ServerRow[] = [];
   @state() private error: string | null = null;
-  @state() private saved = false;
+  @state() private done = false;
   @state() private saving = false;
-  @query("#web-search") private webSearch!: HcaSwitch;
-  @query("#read-files") private readFiles!: HcaSwitch;
+  /** The tools as saved, to tell whether something changed. */
+  private savedTools = "";
   private nextId = 1;
 
   constructor() {
@@ -78,6 +83,8 @@ export class HcaToolsView extends LitElement {
   /** The saved settings, with the MCP servers as one editable card each. */
   private show(settings: SettingsView): void {
     this.settings = settings;
+    this.webSearch = settings.values.web_search;
+    this.readFiles = settings.values.read_files;
     let servers: Record<string, unknown> = {};
     try {
       servers = JSON.parse(settings.values.mcp_servers).mcpServers ?? {};
@@ -87,20 +94,32 @@ export class HcaToolsView extends LitElement {
     this.servers = Object.entries(servers).map(([name, config]) => ({
       id: this.nextId++, name, config: JSON.stringify(config, null, 2),
     }));
+    this.savedTools = this.tools();
+  }
+
+  /** What can be changed here, to compare with what is saved. */
+  private tools(): string {
+    return JSON.stringify([this.webSearch, this.readFiles, this.servers.map((s) => [s.name, s.config])]);
+  }
+
+  private discard(): void {
+    this.error = null;
+    if (this.settings) this.show(this.settings);
   }
 
   private updateServer(id: number, changes: Partial<ServerRow>): void {
     this.servers = this.servers.map((s) => (s.id === id ? { ...s, ...changes, error: undefined, check: undefined } : s));
-    this.saved = false;
+    this.done = false;
   }
 
   private addServer(): void {
     this.servers = [...this.servers, { id: this.nextId++, name: "", config: NEW_SERVER_CONFIG }];
+    this.done = false;
   }
 
   private removeServer(id: number): void {
     this.servers = this.servers.filter((s) => s.id !== id);
-    this.saved = false;
+    this.done = false;
   }
 
   /** Validates every card; returns the mcpServers object, or null when one needs fixing. */
@@ -134,7 +153,7 @@ export class HcaToolsView extends LitElement {
 
   private async save(): Promise<void> {
     this.error = null;
-    this.saved = false;
+    this.done = false;
     const servers = this.collectServers();
     if (!servers) {
       this.error = "Some MCP servers need fixing, so nothing was saved.";
@@ -143,11 +162,11 @@ export class HcaToolsView extends LitElement {
     this.saving = true;
     try {
       this.show(await saveSettings(this.connection, {
-        web_search: this.webSearch.checked,
-        read_files: this.readFiles.checked,
+        web_search: this.webSearch,
+        read_files: this.readFiles,
         mcp_servers: JSON.stringify({ mcpServers: servers }),
       }));
-      this.saved = true;
+      this.done = true;
       await this.checkServers();
     } catch (err) {
       this.error = (err as Error).message;
@@ -189,30 +208,35 @@ export class HcaToolsView extends LitElement {
   }
 
   render() {
-    const v = this.settings?.values;
-    if (!v) return nothing;
+    if (!this.settings) return nothing;
+    const dirty = this.tools() !== this.savedTools;
+    const [message, tone] = this.error ? [this.error, "error"]
+      : dirty ? ["You have changes that are not saved.", "neutral"]
+      : this.done ? ["Saved. New sessions will use the new tools.", "ok"]
+      : ["", "neutral"];
     return html`
-      <hca-page>
-        ${this.error ? html`<hca-banner tone="error">${this.error}</hca-banner>` : nothing}
-        <hca-section heading="Built-in tools">
-          <hca-switch id="web-search" label="Web search" ?checked=${v.web_search}
-            hint="Lets the assistant search the web and read web pages, for news and up-to-date information."></hca-switch>
-          <hca-switch id="read-files" label="Read files" ?checked=${v.read_files}
-            hint="Lets the assistant open images, PDFs and text files. It can read only the files of its own session."></hca-switch>
-        </hca-section>
-        <hca-section heading="MCP servers">
-          <hca-button slot="actions" icon="plus" @click=${this.addServer}>Add MCP server</hca-button>
-          ${this.servers.length
-            ? html`<div class="servers">${this.servers.map((s) => this.renderServer(s))}</div>`
-            : html`<hca-empty-state icon="tool" heading="No MCP servers">
-                Add Home Assistant's MCP Server to let the assistant see and control your home.
-              </hca-empty-state>`}
-        </hca-section>
-        <div class="actions">
-          <hca-button variant="primary" ?loading=${this.saving} @click=${this.save}>Save</hca-button>
-          ${this.saved ? html`<hca-badge tone="ok">Saved. New sessions will use the new tools.</hca-badge>` : nothing}
-        </div>
-      </hca-page>
+      <hca-form-layout message=${message} tone=${tone}>
+        <hca-page>
+          <hca-section heading="Built-in tools">
+            <hca-switch label="Web search" ?checked=${this.webSearch}
+              @change=${(e: Event) => { this.webSearch = (e.target as HcaSwitch).checked; this.done = false; }}
+              hint="Lets the assistant search the web and read web pages, for news and up-to-date information."></hca-switch>
+            <hca-switch label="Read files" ?checked=${this.readFiles}
+              @change=${(e: Event) => { this.readFiles = (e.target as HcaSwitch).checked; this.done = false; }}
+              hint="Lets the assistant open images, PDFs and text files. It can read only the files of its own session."></hca-switch>
+          </hca-section>
+          <hca-section heading="MCP servers">
+            <hca-button slot="actions" icon="plus" @click=${this.addServer}>Add MCP server</hca-button>
+            ${this.servers.length
+              ? html`<div class="servers">${this.servers.map((s) => this.renderServer(s))}</div>`
+              : html`<hca-empty-state icon="tool" heading="No MCP servers">
+                  Add Home Assistant's MCP Server to let the assistant see and control your home.
+                </hca-empty-state>`}
+          </hca-section>
+        </hca-page>
+        <hca-button slot="actions" ?disabled=${!dirty || this.saving} @click=${this.discard}>Discard</hca-button>
+        <hca-button slot="actions" variant="primary" ?disabled=${!dirty} ?loading=${this.saving} @click=${this.save}>Save</hca-button>
+      </hca-form-layout>
     `;
   }
 }

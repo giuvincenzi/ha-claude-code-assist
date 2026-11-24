@@ -38,6 +38,10 @@ AUTH_FAILED_MESSAGE = ("Claude Code could not sign in because the setup token wa
                        "Create a new one with claude setup-token and paste it in Settings.")
 
 
+# Channels saved under an older name: Home Assistant's was "voice" before 0.3.0.
+RENAMED_CHANNELS = {"voice": "home_assistant"}
+
+HOME_ASSISTANT_FILE = "home_assistant.json"
 SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -101,7 +105,9 @@ class SessionRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionRecord:
-        return cls(**{**data, "settings": SessionSettings(**data["settings"]),
+        source = {**data["source"]}
+        source["channel"] = RENAMED_CHANNELS.get(source["channel"], source["channel"])
+        return cls(**{**data, "source": source, "settings": SessionSettings(**data["settings"]),
                       "claude": ClaudeSession(**data["claude"])})
 
 
@@ -123,8 +129,11 @@ def apply_usage(claude: ClaudeSession, model_usage: dict[str, Any], model: str |
 class SessionStore:
     """One folder per session, named after our session id:
 
-        <root>/<session_id>/session.json   the record, written atomically
-        <root>/<session_id>/workdir/       Claude Code's working directory (attachments)
+        <root>/<session_id>/session.json          the record
+        <root>/<session_id>/home_assistant.json   what Home Assistant sent with each message
+        <root>/<session_id>/workdir/              Claude Code's working directory (attachments)
+
+The files are written atomically.
 
     Claude Code reads only its working directory, so the record stays out of its reach.
     """
@@ -157,11 +166,24 @@ class SessionStore:
         return records
 
     def save(self, record: SessionRecord) -> None:
-        folder = self.folder(record.session_id)
+        self._write(record.session_id, "session.json", asdict(record))
+
+    def home_assistant_inputs(self, session_id: str) -> list[dict[str, Any]]:
+        """What Home Assistant sent with each message of the session, oldest first."""
+        try:
+            return json.loads((self.folder(session_id) / HOME_ASSISTANT_FILE).read_text())
+        except FileNotFoundError:
+            return []
+
+    def add_home_assistant_input(self, session_id: str, entry: dict[str, Any]) -> None:
+        self._write(session_id, HOME_ASSISTANT_FILE, [*self.home_assistant_inputs(session_id), entry])
+
+    def _write(self, session_id: str, name: str, data: Any) -> None:
+        folder = self.folder(session_id)
         folder.mkdir(parents=True, exist_ok=True)
-        tmp = folder / "session.json.tmp"
-        tmp.write_text(json.dumps(asdict(record), indent=2) + "\n")
-        os.replace(tmp, folder / "session.json")
+        tmp = folder / f"{name}.tmp"
+        tmp.write_text(json.dumps(data, indent=2) + "\n")
+        os.replace(tmp, folder / name)
 
     def remove(self, session_id: str) -> None:
         """Removes the session's folder: its record and its working directory."""
@@ -290,13 +312,11 @@ class SessionManager:
         except KeyError:
             raise KeyError("This session no longer exists.") from None
 
-    # --- turns ---------------------------------------------------------------
+    def home_assistant_inputs(self, session_id: str) -> list[dict[str, Any]]:
+        """What Home Assistant sent with each message of the session: {"received_at", "input"}."""
+        return self._store.home_assistant_inputs(self.get(session_id).session_id)
 
-    async def send(self, channel: str, source_key: str, conversation_id: str | None, text: str,
-                   source_name: str | None = None) -> TurnResult:
-        """Routes a message to its session and runs the turn."""
-        record = await self.resolve(channel, source_key, conversation_id, source_name)
-        return await self.run(record, text)
+    # --- turns ---------------------------------------------------------------
 
     async def resolve(self, channel: str, source_key: str, conversation_id: str | None,
                       source_name: str | None = None) -> SessionRecord:
@@ -304,12 +324,14 @@ class SessionManager:
         return await self._resolve(channel, source_key, conversation_id, source_name)
 
     async def run(self, record: SessionRecord, text: str, title: str | None = None,
-                  move_if_closed: bool = True) -> TurnResult:
+                  move_if_closed: bool = True, home_assistant_input: dict[str, Any] | None = None) -> TurnResult:
         """Runs one turn; waits for the session's previous turn to finish.
 
         `title` names a new session (the message by default). A message whose session closed
         while it waited goes to a new session, unless `move_if_closed` is False: a message with
         files attached to this session must not, as the new session cannot read them.
+        `home_assistant_input` is what Home Assistant sent with the message, kept as it came
+        for the panel in the session that gets the message.
         """
         runtime = self._runtime.setdefault(record.session_id, _Runtime())
         async with runtime.lock:
@@ -321,11 +343,15 @@ class SessionManager:
                 record = await self._resolve(source["channel"], source["key"], None)
                 runtime = self._runtime.setdefault(record.session_id, _Runtime())
                 async with runtime.lock:
-                    return await self._run_locked(record, runtime, text, title)
-            return await self._run_locked(record, runtime, text, title)
+                    return await self._run_locked(record, runtime, text, title, home_assistant_input)
+            return await self._run_locked(record, runtime, text, title, home_assistant_input)
 
-    async def _run_locked(self, record: SessionRecord, runtime: _Runtime, text: str,
-                          title: str | None) -> TurnResult:
+    async def _run_locked(self, record: SessionRecord, runtime: _Runtime, text: str, title: str | None,
+                          home_assistant_input: dict[str, Any] | None) -> TurnResult:
+        if home_assistant_input is not None:
+            # Under the turn lock: a deletion, which holds it too, never runs meanwhile.
+            self._store.add_home_assistant_input(
+                record.session_id, {"received_at": self._now().isoformat(), "input": home_assistant_input})
         runtime.busy = True
         self._publish_session(record)
         try:

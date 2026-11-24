@@ -7,6 +7,7 @@ import { coreConnection } from "./lib/connection";
 import { CoreController } from "./lib/core-controller";
 import type { Status } from "./lib/types";
 import type { Tab } from "./ui/hca-tabs";
+import "./views/about/hca-about-view";
 import "./views/chat/hca-chat-view";
 import "./views/memory/hca-memory-view";
 import "./views/sessions/hca-sessions-view";
@@ -19,6 +20,7 @@ const TABS: Tab[] = [
   { id: "tools", label: "Tools", icon: "tool" },
   { id: "sessions", label: "Sessions", icon: "history" },
   { id: "settings", label: "Settings", icon: "settings" },
+  { id: "about", label: "About", icon: "info" },
 ];
 
 /** The panel: header with tabs and status, then the selected view. */
@@ -44,7 +46,9 @@ export class HcaApp extends LitElement {
     }
     /* These views scroll inside their own layout. */
     main.chat,
-    main.sessions {
+    main.sessions,
+    main.settings,
+    main.tools {
       overflow: hidden;
     }
   `;
@@ -57,9 +61,11 @@ export class HcaApp extends LitElement {
     super();
     new CoreController(this, {
       onOpen: () => this.loadStatus(),
-      // What the status bar shows changes with the sessions and the settings, from any panel.
+      // What the status bar shows changes with the sessions, the settings and the integration.
       onEvent: (event) => {
-        if (["session_updated", "session_deleted", "settings_changed"].includes(event.type)) this.loadStatus();
+        if (["session_updated", "session_deleted", "settings_changed", "status_changed"].includes(event.type)) {
+          this.loadStatus();
+        }
       },
     });
   }
@@ -78,6 +84,8 @@ export class HcaApp extends LitElement {
         return html`<hca-tools-view .connection=${this.connection}></hca-tools-view>`;
       case "settings":
         return html`<hca-settings-view .connection=${this.connection}></hca-settings-view>`;
+      case "about":
+        return html`<hca-about-view .status=${this.status}></hca-about-view>`;
       default:
         return html`<hca-chat-view .connection=${this.connection}></hca-chat-view>`;
     }

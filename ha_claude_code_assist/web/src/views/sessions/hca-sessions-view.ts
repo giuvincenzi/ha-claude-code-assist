@@ -1,17 +1,21 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 
+import { CHANNEL_NAMES } from "../../lib/channels";
 import type { Connection } from "../../lib/connection";
 import { CoreController } from "../../lib/core-controller";
 import { capitalize, formatCompact, formatDateTime } from "../../lib/format";
-import type { ChatItem, Session } from "../../lib/types";
+import type { ChatItem, HomeAssistantInput, Session } from "../../lib/types";
 import { contextLabel, totalTokens } from "../../lib/usage";
 import "../../ui/hca-badge";
 import "../../ui/hca-banner";
 import "../../ui/hca-button";
+import "../../ui/hca-code-block";
+import "../../ui/hca-collapsible";
 import "../../ui/hca-confirm-dialog";
 import type { HcaConfirmDialog } from "../../ui/hca-confirm-dialog";
 import "../../ui/hca-empty-state";
+import "../../ui/hca-group";
 import "../../ui/hca-list-row";
 import "../../ui/hca-page";
 import "../../ui/hca-property-list";
@@ -19,6 +23,7 @@ import type { Property } from "../../ui/hca-property-list";
 import "../../ui/hca-section";
 import "../../ui/hca-sidebar-layout";
 import "../../ui/hca-split";
+import "../../ui/hca-status-dot";
 import "../../ui/hca-tabs";
 import type { Tab } from "../../ui/hca-tabs";
 import "../chat/hca-message-list";
@@ -28,16 +33,14 @@ const DETAIL_TABS: Tab[] = [
   { id: "messages", label: "Messages" },
 ];
 
-const CHANNELS: Record<string, string> = { panel: "Chat panel", voice: "Voice" };
-
 const onOff = (on: boolean) => (on ? "On" : "Off");
 const tokens = (value: number | null): Pick<Property, "value" | "hint"> =>
   value === null ? { value: "–" } : { value: formatCompact(value), hint: value.toLocaleString() };
 
 /**
  * Every session in a sidebar on the right; the selected one on the left, in two tabs: what is
- * known about it (the app's data and settings apart from what Claude Code reports) and its
- * messages.
+ * known about it (the app's data and settings, what Claude Code reports and, for a session from
+ * Home Assistant, what Home Assistant sent with each message) and its messages.
  */
 @customElement("hca-sessions-view")
 export class HcaSessionsView extends LitElement {
@@ -55,6 +58,16 @@ export class HcaSessionsView extends LitElement {
       display: block;
       margin-bottom: var(--hca-space-2);
     }
+    .received {
+      display: inline-flex;
+      gap: var(--hca-space-3);
+      min-width: 0;
+    }
+    .received .text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   `;
 
   @property({ attribute: false }) connection!: Connection;
@@ -62,6 +75,7 @@ export class HcaSessionsView extends LitElement {
   @state() private selected: string | null = null;
   @state() private detailTab = "info";
   @state() private history: ChatItem[] = [];
+  @state() private homeAssistant: HomeAssistantInput[] = [];
   @state() private error: string | null = null;
   @query("hca-confirm-dialog") private confirm!: HcaConfirmDialog;
 
@@ -72,7 +86,7 @@ export class HcaSessionsView extends LitElement {
       onEvent: (event) => {
         if (event.type === "session_updated") this.upsert(event.session);
         if (event.type === "session_deleted") this.forget(event.session_id);
-        if (event.type === "turn_finished" && event.session_id === this.selected) this.loadHistory();
+        if (event.type === "turn_finished" && event.session_id === this.selected) this.loadDetail();
       },
     });
   }
@@ -95,21 +109,32 @@ export class HcaSessionsView extends LitElement {
     if (this.selected !== sessionId) return;
     this.selected = null;
     this.history = [];
+    this.homeAssistant = [];
     if (this.sessions.length) this.select(this.sessions[0]);
   }
 
   private async select(session: Session): Promise<void> {
     this.selected = session.session_id;
     this.history = [];
-    await this.loadHistory();
+    this.homeAssistant = [];
+    await this.loadDetail();
   }
 
-  private async loadHistory(): Promise<void> {
-    const sessionId = this.selected;
-    if (!sessionId) return;
-    const history = await this.connection.request<ChatItem[]>("sessions/history", { session_id: sessionId });
+  /** The messages of the selected session and, for one from Home Assistant, what it sent. */
+  private async loadDetail(): Promise<void> {
+    const session = this.sessions.find((s) => s.session_id === this.selected);
+    if (!session) return;
+    const sessionId = session.session_id;
+    const [history, homeAssistant] = await Promise.all([
+      this.connection.request<ChatItem[]>("sessions/history", { session_id: sessionId }),
+      session.source.channel === "home_assistant"
+        ? this.connection.request<HomeAssistantInput[]>("sessions/home_assistant", { session_id: sessionId })
+        : Promise.resolve([]),
+    ]);
     // Another session may have been selected while this one loaded.
-    if (this.selected === sessionId) this.history = history;
+    if (this.selected !== sessionId) return;
+    this.history = history;
+    this.homeAssistant = homeAssistant;
   }
 
   private async run(action: () => Promise<unknown>): Promise<void> {
@@ -143,10 +168,11 @@ export class HcaSessionsView extends LitElement {
       <hca-list-row selectable heading=${session.title || "(no messages)"} detail=${detail}
         ?selected=${session.session_id === this.selected} @hca-select=${() => this.select(session)}>
         ${session.busy
-          ? html`<hca-badge slot="end" tone="accent">Answering</hca-badge>`
+          ? html`<hca-status-dot slot="start" tone="accent" label="Answering"></hca-status-dot>`
           : session.active
-            ? html`<hca-badge slot="end" tone="ok">Active</hca-badge>`
-            : nothing}
+            ? html`<hca-status-dot slot="start" tone="ok" label="Active"></hca-status-dot>`
+            : html`<hca-status-dot slot="start"></hca-status-dot>`}
+        <hca-badge slot="end">${CHANNEL_NAMES[session.source.channel] ?? session.source.channel}</hca-badge>
       </hca-list-row>
     `;
   }
@@ -156,8 +182,12 @@ export class HcaSessionsView extends LitElement {
     const { settings } = session;
     const items: Property[] = [
       { label: "Session ID", value: session.session_id },
+      {
+        label: session.conversation_ids.length === 1 ? "Conversation ID" : "Conversation IDs",
+        value: session.conversation_ids.join(", "),
+      },
       { label: "User", value: session.source.name ?? session.source.key },
-      { label: "Channel", value: CHANNELS[session.source.channel] ?? session.source.channel },
+      { label: "Channel", value: CHANNEL_NAMES[session.source.channel] ?? session.source.channel },
       { label: "Started", value: formatDateTime(session.created_at) },
       { label: "Last message", value: formatDateTime(session.last_activity) },
     ];
@@ -190,12 +220,31 @@ export class HcaSessionsView extends LitElement {
     ];
   }
 
+  /** What Home Assistant sent with each message, newest first: each opens on its JSON. */
+  private renderHomeAssistant() {
+    return html`<hca-group label="Home Assistant" divided>
+      ${[...this.homeAssistant].reverse().map((received) => html`
+        <hca-collapsible>
+          <span slot="summary" class="received">
+            <span>${formatDateTime(received.received_at)}</span><span class="text">${received.input.text}</span>
+          </span>
+          <hca-code-block .code=${JSON.stringify(received.input, null, 2)}></hca-code-block>
+        </hca-collapsible>
+      `)}
+    </hca-group>`;
+  }
+
   private renderDetail(session: Session) {
     if (this.detailTab === "info") {
-      return html`<hca-split role="tabpanel" aria-label="Info">
-        <hca-property-list slot="start" .items=${this.appProperties(session)}></hca-property-list>
-        <hca-property-list slot="end" .items=${this.claudeProperties(session)}></hca-property-list>
-      </hca-split>`;
+      return html`<div role="tabpanel" aria-label="Info">
+        <hca-split>
+          <hca-property-list slot="start" .items=${this.appProperties(session)}></hca-property-list>
+          <hca-group slot="end" label="Claude">
+            <hca-property-list .items=${this.claudeProperties(session)}></hca-property-list>
+          </hca-group>
+        </hca-split>
+        ${this.homeAssistant.length ? this.renderHomeAssistant() : nothing}
+      </div>`;
     }
     return html`<div role="tabpanel" aria-label="Messages">
       ${this.history.length

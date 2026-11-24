@@ -9,7 +9,10 @@ import "../ui/hca-tabs";
 import type { Tab } from "../ui/hca-tabs";
 import { base } from "../ui/styles";
 
-/** The app's top bar: name, tabs, and the state of the setup token, the MCP servers and the sessions. */
+/**
+ * The app's top bar: name, tabs, and the state of the setup token, the MCP servers and the
+ * sessions, after a warning when the app and its integration need an update to match.
+ */
 @customElement("hca-app-header")
 export class HcaAppHeader extends LitElement {
   static styles = [
@@ -75,6 +78,7 @@ export class HcaAppHeader extends LitElement {
     const problem = tokenProblem({ ...s.token, rejected_at: s.token_rejected_at });
     const servers = s.mcp_servers.length;
     return html`
+      ${s.version_problem ? html`<hca-badge tone="warn" title=${s.version_problem}>Update needed</hca-badge>` : nothing}
       ${problem
         ? html`<hca-badge tone=${problem.tone} title=${problem.hint}>Setup token ${problem.label}</hca-badge>`
         : html`<hca-badge tone="ok" title=${`The setup token is set. It expires around ${formatDate(s.token.expires_at)}.`}>Setup token</hca-badge>`}

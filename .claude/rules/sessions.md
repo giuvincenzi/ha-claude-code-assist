@@ -37,8 +37,11 @@ How conversations map to Claude Code sessions and processes (`sessions.py`).
   which date it counts from: it never removes the messages of a session still listed.
 - The panel's source key is the Home Assistant user; it generates its own conversation id per
   chat thread, and "New session" closes the current session first.
-- Assist's channel is `voice`; its source key is the voice satellite, else the voice device,
-  else the user who spoke (`_source` in the integration's `conversation.py`), so each device keeps
-  its own session. Home Assistant's conversation id is attached as the panel's ids are.
+- Assist's channel is `home_assistant` (`voice` before 0.3.0, renamed when a record is read:
+  `RENAMED_CHANNELS`); its source key is the voice satellite, else the voice device, else the
+  user who spoke (`_source` in the integration's `conversation.py`), so each device keeps its own
+  session. Home Assistant's conversation id is attached as the panel's ids are.
+- What Home Assistant sent with a message is kept under the turn lock (`run`), in the session
+  that gets the message, which is a new one when the session closed while it waited.
 - A voice turn goes on when Home Assistant stops listening (`stream_turn`): cancelling it would
   leave the session's transcript cut in the middle of a tool call.
