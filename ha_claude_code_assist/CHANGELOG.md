@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0
+
 ### Added
 
 - Settings > Agent, where you rewrite the assistant's prompt, one for the chat of the panel and
