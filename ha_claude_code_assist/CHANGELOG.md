@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- After an update, the browser could keep showing the panel of the previous version, even after
+  reloading Home Assistant. The panel's page is now always checked with the app, and when the app
+  is updated while the panel is open, the panel offers to reload.
+
 ## 0.3.0
 
 ### Added

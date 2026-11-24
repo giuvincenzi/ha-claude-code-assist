@@ -56,6 +56,9 @@ HA Claude Code Assist panel, in the Home Assistant sidebar (see
 - **About** shows the versions of the app, of the integration and of Claude Code, and links to
   this documentation, the changelog, the issues and the repository on GitHub.
 
+When the app is updated while the panel is open, the panel says so and offers **Reload**, so
+you use the new version.
+
 At the top, the panel shows whether the setup token is set, how many MCP servers are
 configured and how many sessions are active. The setup token turns red when it is missing,
 rejected or expired, and orange in the 30 days before it expires. **Update needed** appears

@@ -4,7 +4,8 @@ import { customElement, property } from "lit/decorators.js";
 import "./hca-icon";
 import { base } from "./styles";
 
-/** A notice in the flow of a page: info, ok, warn or error, with an optional heading. */
+/** A notice in the flow of a page: info, ok, warn or error, with an optional heading and an
+ * action on the right (slot "action", such as a button). */
 @customElement("hca-banner")
 export class HcaBanner extends LitElement {
   static styles = [
@@ -45,6 +46,10 @@ export class HcaBanner extends LitElement {
         min-width: 0;
         color: var(--hca-text);
       }
+      ::slotted([slot="action"]) {
+        align-self: center;
+        flex-shrink: 0;
+      }
     `,
   ];
 
@@ -59,6 +64,7 @@ export class HcaBanner extends LitElement {
         ${this.heading ? html`<strong>${this.heading}</strong>` : nothing}
         <slot></slot>
       </div>
+      <slot name="action"></slot>
     `;
   }
 }
